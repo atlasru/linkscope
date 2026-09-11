@@ -1,0 +1,2 @@
+{"identifier":"main","description":"Local window IPC only; no shell, HTTP or filesystem plugins","windows":["main"],"permissions":["core:default"]}
+

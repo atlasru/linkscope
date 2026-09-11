@@ -1,0 +1,10 @@
+{
+  "id": "google-aaaa",
+  "name": "Google · DNS AAAA",
+  "input": "domain",
+  "group": "data",
+  "endpoint": "https://dns.google/resolve?name={value}&type=AAAA",
+  "host": "dns.google",
+  "parser": "doh",
+  "ttl": 3600
+}

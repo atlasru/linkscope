@@ -1,0 +1,43 @@
+// Requires `npm install --no-save playwright` and `npx playwright install chromium`.
+// Run from the project root while serving ui/ at http://127.0.0.1:8765.
+import {chromium} from 'playwright';
+import assert from 'node:assert/strict';
+import {mkdir,writeFile} from 'node:fs/promises';
+await mkdir('test-results',{recursive:true});
+const browser=await chromium.launch({headless:process.env.HEADED!=='1'});
+const page=await browser.newPage({viewport:{width:1440,height:940}});
+const errors=[],requests=[];
+page.on('pageerror',e=>errors.push(e.message));
+page.on('request',r=>requests.push(r.url()));
+await page.goto('http://127.0.0.1:8765');
+await page.click('#empty-demo');await page.click('#demo-load');
+await page.waitForFunction(()=>window.linkscope?.model.nodes.length===350);
+await page.screenshot({path:'test-results/overview.png'});
+await page.fill('#search','node-5.example.org');
+await page.waitForFunction(()=>document.getElementById('search-count').textContent.includes('1'));
+await page.click('#layout');
+await page.waitForFunction(()=>linkscope.renderer.layoutSteps===0,{},{timeout:30000});
+assert.equal(await page.evaluate(()=>linkscope.renderer.gl.getError()),0,'GL error after layout');
+assert.ok(await page.evaluate(()=>linkscope.model.positions.every(Number.isFinite)));
+await page.click('#cluster');
+await page.waitForFunction(()=>document.querySelector('#activity').textContent.includes('Louvain'));
+await page.fill('#date-from','2026-08-20');await page.fill('#date-to','2026-08-30');
+await page.dispatchEvent('#date-to','change');
+const filtered=await page.evaluate(()=>linkscope.renderer.edgeCount);
+assert.ok(filtered<2100,'timeline must remove edges outside date range');
+await page.click('#time-reset');
+await page.click('#demo');await page.selectOption('#demo-size','50000');await page.click('#demo-load');
+await page.waitForFunction(()=>linkscope.model.nodes.length===50000);
+const samples=await page.evaluate(async()=>{
+ const result=[];for(let i=0;i<180;i++){const start=performance.now();await new Promise(requestAnimationFrame);result.push(performance.now()-start)}return result;
+});
+assert.equal(await page.evaluate(()=>linkscope.renderer.gl.getError()),0,'GL error at 50k');
+const stats=await page.evaluate(()=>({nodes:linkscope.model.nodes.length,edges:linkscope.model.edges.length,gpu:linkscope.renderer.gl.getParameter(linkscope.renderer.gl.RENDERER),heap:performance.memory?.usedJSHeapSize}));
+assert.equal(stats.edges,200000);
+await page.screenshot({path:'test-results/50k.png'});
+assert.deepEqual(errors,[]);
+assert.ok(requests.every(u=>u.startsWith('http://127.0.0.1:8765/')||u.startsWith('blob:')),'unexpected outbound browser request');
+samples.sort((a,b)=>a-b);
+const report={...stats,median_frame_ms:samples[90],p95_frame_ms:samples[171],note:'Browser renderer only. Does not establish Tauri/T480/RSS acceptance.',errors};
+await writeFile('test-results/browser.json',JSON.stringify(report,null,2));
+console.log(report);await browser.close();

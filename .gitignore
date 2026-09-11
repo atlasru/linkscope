@@ -1,0 +1,7 @@
+/target/
+/node_modules/
+/test-results/
+*.sqlite*
+*.age
+*.log
+.DS_Store

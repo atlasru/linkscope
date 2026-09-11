@@ -1,7 +1,7 @@
 use crate::{engine::EngineHandle, model::*, network::Network};
 use anyhow::{bail,Result};
 use async_trait::async_trait;
-use futures::{stream,StreamExt};
+use futures::{future::BoxFuture, stream, FutureExt, StreamExt};
 use serde::{Deserialize,Serialize};
 use std::{path::Path,sync::Arc};
 use tokio::sync::mpsc;
@@ -95,7 +95,21 @@ builtin!("keybase","Keybase · public lookup","username","https://keybase.io/_/a
 pub struct Progress { pub source:String,pub status:String,pub done:usize,pub total:usize,pub batch:Option<Batch>,pub error:Option<String> }
 pub async fn run_all(input:Node,transforms:Vec<Arc<dyn Transform>>,network:Arc<Network>,engine:EngineHandle,tx:mpsc::Sender<Progress>,cancel:CancellationToken){
     let total=transforms.len();let mut done=0;
-    let tasks=stream::iter(transforms.into_iter().map(|t|{let n=input.clone();let net=network.clone();let c=cancel.clone();async move{let id=t.manifest().id.clone();let r=t.run(&n,&net,&c).await;(id,r)}})).buffer_unordered(10);
+    // Materialize owned, Send futures before constructing the buffered stream.
+    // This avoids a higher-ranked trait-object lifetime in the iterator closure
+    // escaping into the task passed to Tauri/Tokio spawn.
+    let mut pending: Vec<BoxFuture<'static, (String, Result<Batch>)>> = Vec::new();
+    for transform in transforms {
+        let node = input.clone();
+        let network = network.clone();
+        let cancel = cancel.clone();
+        pending.push(async move {
+            let id = transform.manifest().id.clone();
+            let result = transform.run(&node, &network, &cancel).await;
+            (id, result)
+        }.boxed());
+    }
+    let tasks = stream::iter(pending).buffer_unordered(10);
     tokio::pin!(tasks);
     loop {
         let next=tokio::select!{_=cancel.cancelled()=>break,next=tasks.next()=>next};let Some((source,result))=next else{break};done+=1;

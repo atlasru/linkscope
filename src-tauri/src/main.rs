@@ -1,5 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-use linkscope_core::{audit::Audit,engine::EngineHandle,model::*,network::{Network,NetworkConfig},transform::{self,Manifest,Progress,Transform},vault::Vault};
+use linkscope_core::{audit::Audit,engine::EngineHandle,model::*,network::{Network,NetworkConfig},transform::{self,Progress,Transform},vault::Vault};
 use serde::{Deserialize,Serialize};
 use std::{path::PathBuf,sync::Arc};
 use tauri::{Manager,State};

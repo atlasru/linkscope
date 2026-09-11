@@ -13,3 +13,19 @@ fn fixture()->Batch{let a=Node::new("domain","Example.org.","test-a");let b=Node
 #[test]fn parser_ignores_invalid_dns_addresses(){let m=Manifest{id:"dns".into(),name:"DNS".into(),input:"domain".into(),group:"data".into(),endpoint:"https://dns.google/resolve?name={value}".into(),host:"dns.google".into(),parser:"doh".into(),pointer:String::new(),output_kind:String::new(),ttl:60};let b=parse(&m,&Node::new("domain","example.org","test"),br#"{"Answer":[{"type":1,"data":"192.0.2.1"},{"type":1,"data":"not an ip"}]}"#).unwrap();assert_eq!(b.nodes.len(),2);assert_eq!(b.edges.len(),1);}
 #[test]fn exports_preserve_special_characters_and_references(){let mut store=Store::open(None).unwrap();store.commit(&fixture()).unwrap();for format in ["json","stix","misp"]{let mut bytes=Vec::new();linkscope_core::export::write(&store,format,&mut bytes).unwrap();let value:serde_json::Value=serde_json::from_slice(&bytes).unwrap();assert!(value.is_object());}let mut xml=Vec::new();linkscope_core::export::write(&store,"graphml",&mut xml).unwrap();assert!(String::from_utf8(xml).unwrap().contains("edgedefault=\"directed\""));}
 #[test]fn vault_roundtrip_wrong_passphrase_and_replacement(){let dir=tempfile::tempdir().unwrap();let path=dir.path().join("keys.age");let mut a=Vault::default();a.set("source".into(),"test-secret".into());a.save(&path,zeroize::Zeroizing::new("correct horse battery staple".into())).unwrap();assert!(!String::from_utf8_lossy(&std::fs::read(&path).unwrap()).contains("test-secret"));let mut b=Vault::default();assert!(b.unlock(&path,zeroize::Zeroizing::new("incorrect passphrase".into())).is_err());b.unlock(&path,zeroize::Zeroizing::new("correct horse battery staple".into())).unwrap();assert_eq!(b.get("source").unwrap().as_str(),"test-secret");b.save(&path,zeroize::Zeroizing::new("another long password".into())).unwrap();b.lock();assert!(b.get("source").is_none());}
+
+#[tokio::test]
+async fn transform_scheduler_is_spawnable_and_signals_completion() {
+    use linkscope_core::{engine::EngineHandle, network::{Network, NetworkConfig}, transform::run_all};
+    let engine = EngineHandle::start(None, 8 * 1024 * 1024).await.unwrap();
+    let network = std::sync::Arc::new(Network::new(NetworkConfig::default(), engine.clone()).unwrap());
+    let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+    let job = tokio::spawn(run_all(
+        Node::new("domain", "example.org", "test"), Vec::new(), network,
+        engine, tx, tokio_util::sync::CancellationToken::new(),
+    ));
+    job.await.unwrap();
+    let event = rx.recv().await.unwrap();
+    assert_eq!(event.status, "finished");
+    assert_eq!(event.total, 0);
+}

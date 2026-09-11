@@ -3,11 +3,11 @@ use anyhow::{bail, Context, Result};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::{fs::{File, OpenOptions}, io::{BufRead, BufReader, Write}, path::Path};
+use std::{fs::{File, OpenOptions}, io::{BufRead, BufReader, Write}, path::{Path, PathBuf}};
 
 #[derive(Serialize, Deserialize)]
 struct Record { id: String, checksum: String, batch: Batch }
-pub struct Store { pub db: Connection, log: Option<File>, poisoned: bool, _lock: Option<File> }
+pub struct Store { pub db: Connection, log: Option<File>, poisoned: bool, _lock: Option<File>, log_path: Option<PathBuf> }
 impl Store {
     pub fn open(path: Option<&Path>) -> Result<Self> {
         let (db, log, lock) = if let Some(path) = path {
@@ -23,7 +23,7 @@ impl Store {
           CREATE TABLE IF NOT EXISTS applied(id TEXT PRIMARY KEY);
           CREATE TABLE IF NOT EXISTS cache(key TEXT PRIMARY KEY, body BLOB NOT NULL, expires INTEGER NOT NULL, created INTEGER NOT NULL);
           CREATE INDEX IF NOT EXISTS cache_expiry ON cache(expires);")?;
-        let mut s = Self { db, log, poisoned: false, _lock:lock }; s.recover()?; Ok(s)
+        let mut s = Self { db, log, poisoned: false, _lock:lock, log_path:path.map(|p|p.join("transactions.jsonl")) }; s.recover()?; Ok(s)
     }
     fn apply_record(&mut self, r: &Record) -> Result<()> {
         let tx = self.db.transaction()?;
@@ -33,8 +33,8 @@ impl Store {
         tx.execute("INSERT INTO applied VALUES (?)", [&r.id])?; tx.commit()?; Ok(())
     }
     fn recover(&mut self) -> Result<()> {
-        let Some(log) = &self.log else { return Ok(()); };
-        let mut reader = BufReader::new(log.try_clone()?);
+        let Some(path) = self.log_path.clone() else { return Ok(()); };
+        let mut reader = BufReader::new(File::open(&path)?);
         let mut offset = 0u64;
         loop {
             let mut line = Vec::new();
@@ -42,7 +42,13 @@ impl Store {
             if len == 0 { break; }
             if line.last() != Some(&b'\n') {
                 if len >= 4 * 1024 * 1024 { bail!("oversized transaction log record"); }
-                self.log.as_ref().unwrap().set_len(offset)?; break;
+                // Windows append-only handles do not grant FILE_WRITE_DATA,
+                // which SetEndOfFile needs. Repair through a separate writable
+                // handle while retaining the exclusive investigation lock.
+                let repair = OpenOptions::new().write(true).open(&path)?;
+                repair.set_len(offset)?;
+                repair.sync_data()?;
+                break;
             }
             let record: Record = serde_json::from_slice(&line).context("corrupt transaction log; recovery stopped")?;
             if format!("{:x}", Sha256::digest(serde_json::to_vec(&record.batch)?)) != record.checksum { bail!("transaction checksum mismatch"); }

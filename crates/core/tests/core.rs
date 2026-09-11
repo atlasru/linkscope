@@ -5,7 +5,24 @@ fn fixture()->Batch{let a=Node::new("domain","Example.org.","test-a");let b=Node
 #[test]fn dangling_edges_rejected_before_mutation(){let mut graph=Graph::new(1024*1024,true);let mut batch=fixture();batch.nodes.pop();assert!(graph.admit(&batch).is_err());assert_eq!(graph.topology.node_count(),0);}
 #[test]fn memory_admission_fails_without_oom(){let mut graph=Graph::new(64,true);assert!(graph.admit(&fixture()).is_err());assert_eq!(graph.topology.node_count(),0);}
 #[test]fn duplicate_batches_are_idempotent(){let mut e=Engine::open(None,8*1024*1024).unwrap();e.apply(fixture()).unwrap();e.apply(fixture()).unwrap();assert_eq!(e.graph.topology.node_count(),2);assert_eq!(e.graph.topology.edge_count(),1);assert_eq!(e.search("example").unwrap().len(),1);}
-#[test]fn log_recovers_lost_sqlite_and_truncates_incomplete_tail(){let dir=tempfile::tempdir().unwrap();{let mut s=Store::open(Some(dir.path())).unwrap();s.commit(&fixture()).unwrap();}std::fs::remove_file(dir.path().join("graph.sqlite")).unwrap();{let mut f=std::fs::OpenOptions::new().append(true).open(dir.path().join("transactions.jsonl")).unwrap();f.write_all(b"{\"id\":\"partial").unwrap();}let s=Store::open(Some(dir.path())).unwrap();assert_eq!(s.page("nodes",0,512).unwrap().len(),2);assert_eq!(s.page("edges",0,512).unwrap().len(),1);assert_eq!(std::fs::read(dir.path().join("transactions.jsonl")).unwrap().last(),Some(&b'\n'));}
+#[test]
+fn log_recovers_lost_sqlite_and_truncates_incomplete_tail() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let mut store = Store::open(Some(dir.path())).expect("open original store");
+        store.commit(&fixture()).expect("commit durable fixture");
+    }
+    std::fs::remove_file(dir.path().join("graph.sqlite")).expect("remove closed database");
+    let log_path = dir.path().join("transactions.jsonl");
+    {
+        let mut file = std::fs::OpenOptions::new().append(true).open(&log_path).unwrap();
+        file.write_all(b"{\"id\":\"partial").unwrap();
+    }
+    let store = Store::open(Some(dir.path())).expect("replay log and truncate incomplete tail");
+    assert_eq!(store.page("nodes", 0, 512).unwrap().len(), 2);
+    assert_eq!(store.page("edges", 0, 512).unwrap().len(), 1);
+    assert_eq!(std::fs::read(log_path).unwrap().last(), Some(&b'\n'));
+}
 #[test]fn corrupt_complete_log_stops_recovery(){let dir=tempfile::tempdir().unwrap();std::fs::write(dir.path().join("transactions.jsonl"),b"{bad json}\n").unwrap();assert!(Store::open(Some(dir.path())).is_err());}
 #[test]fn cache_expired_entries_are_not_returned(){let mut s=Store::open(None).unwrap();s.cache_put("key",b"value",60).unwrap();assert_eq!(s.cache_get("key").unwrap(),Some(b"value".to_vec()));s.db.execute("UPDATE cache SET expires=0",[]).unwrap();assert!(s.cache_get("key").unwrap().is_none());}
 #[test]fn anonymity_policy_fails_closed(){assert!(validate_route(&Route::Offline,true).is_ok());assert!(validate_route(&Route::DirectDoh{resolver:"cloudflare".into()},true).is_err());for u in ["socks5://127.0.0.1:9050","socks5h://proxy.example:9050","http://user:pass@127.0.0.1:8080"]{assert!(validate_route(&Route::Proxy{url:u.into()},true).is_err());}assert!(validate_route(&Route::Proxy{url:"socks5h://127.0.0.1:9050".into()},true).is_ok());assert!(validate_route(&Route::Tor,true).is_err());}

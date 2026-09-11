@@ -1,26 +1,23 @@
-# Результаты проверки — 11 сентября 2026
+# Проверка GitHub Actions — 11 сентября 2026
 
-## Выполнено
+Репозиторий: [atlasru/linkscope](https://github.com/atlasru/linkscope).
 
-`node --test tests/model.test.mjs`: 5/5 PASS.
+Исходники, прошедшие проверки:
+`765d3cc49cadd87971f8388fb469a05b6ac146c0`.
 
-1. Синтетический граф 50 000 / 200 000: детерминированные координаты, корректные индексы рёбер.
-2. Дедупликация узлов/рёбер и обновление позиций.
-3. Временной диапазон: включён весь последний день, инверсия отклоняется.
-4. Выпуклая оболочка исключает внутреннюю точку.
-5. Louvain разделяет несвязанные клики и изолированный узел.
+- [Check source](https://github.com/atlasru/linkscope/actions/runs/34642664816): SUCCESS; Cargo check на Windows, Linux и macOS.
+- [Desktop build](https://github.com/atlasru/linkscope/actions/runs/34642664740): SUCCESS на трёх ОС; установщики сохранены в Artifacts.
+- 13 Rust-тестов и 5 JavaScript-тестов пройдены. Windows-тест восстановления журнала также прошёл.
 
-`node --check`: JS-модули и собранный standalone preview синтаксически корректны.
+В ходе CI исправлены две реальные проблемы:
 
-JSON/TOML, соответствие DOM ID ссылкам обработчиков и ссылки документации проверены локально. Это статические проверки, они не доказывают runtime behavior.
+1. Future планировщика трансформаций не удовлетворял Send из-за lifetime closure. Futures теперь материализуются как `BoxFuture<'static, ...>`; добавлен тест `tokio::spawn`.
+2. Windows запрещал усечение журнала через append-only file handle. Recovery использует отдельный writable handle при удержании exclusive lock каталога; исходный тест восстановления сохранён и проходит.
 
-## Не выполнено
+## Границы проверки
 
-- `cargo` и `rustc` отсутствуют. Компиляция, 12 Rust-тестов, Tauri запуск и сборка установщиков не выполнялись. Версии crates не разрешены и lockfile не создан. Возможны ошибки типов/API, которые выявит первая Cargo-сборка.
-- Playwright найден, но Chromium executable отсутствует. `chromium.launch()` завершился ошибкой `Executable doesn't exist`. Screenshot, shader compilation, actual rendering, browser smoke и GPU timings не получены.
-- Нет ThinkPad T480, WebView2/WebKitGTK измерений, total RSS, packet capture, настоящих API запросов и STIX/MISP import validation.
-- Workflow CI подготовлен, но не опубликован/не запущен.
+Успех сборки не подтверждает запуск GUI, работу WebGL-шейдеров, показатели T480, общий RSS или отсутствие DNS/сетевых утечек. Локальная среда задания всё ещё не имеет Rust/Cargo и браузерного executable; нативные проверки выполнены на runners GitHub Actions.
 
-## Следствие
+Сборки не подписаны. Источники OSINT не проверялись живыми запросами. STIX/MISP serializers не проверялись внешним validator/import. Остальные незавершённые требования перечислены в acceptance.md.
 
-Поставка пригодна для дальнейшей сборки, аудита и разработки. Она не является подтверждённой реализацией всех критериев исходного ТЗ. Standalone HTML — просмотр той же frontend-логики с синтетическими данными; в нём нет Rust backend и реальных сетевых трансформаций.
+Каждая build job сохраняет Cargo.lock и package-lock.json в отдельный артефакт dependency-locks. Они ещё не зафиксированы в Git; последующее разрешение semver-зависимостей может дать другие версии.

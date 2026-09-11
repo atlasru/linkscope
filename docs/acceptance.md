@@ -4,7 +4,7 @@
 
 | Требование | Статус | Доказательство, необходимое для приёмки |
 |---|---|---|
-| Rust/Tokio + Tauri | Исходники есть, не скомпилированы | Cargo tests и native build на трёх ОС |
+| Rust/Tokio + Tauri | Cargo tests/check прошли на трёх ОС | Cargo tests и native build на трёх ОС |
 | 100k nodes / 500k edges | Есть генератор UI-fixture | Полный путь import → Rust graph → persistence → render, RSS всех процессов |
 | 50k / 200k: ≥40 FPS, ≤400 MB | Не измерено | Release на T480, Intel UHD 620, 1920×1080, 60 s после прогрева |
 | UI при 10 трансформациях | Scheduler/queue реализованы, не испытаны | Фиктивные независимые источники, задержки/429/503, UI latency p95 |
@@ -17,10 +17,10 @@
 | Карта | Только пустая offline coordinate grid | Geo ingestion, выбранная геоподложка/лицензия, linked selection |
 | Полный memory ceiling | Только оценка/admission графа | Process-tree sampler, bounded global admission, overload tests |
 | Cold graph paging | Только payload eviction | Выгрузка топологии и LRU с политикой возраста |
-| Age vault | Код и непроверенные Rust-тесты | Roundtrip, tamper, key rotation, memory clearing, no-disk plaintext |
+| Age vault | Rust roundtrip/rotation tests прошли | Roundtrip, tamper, key rotation, memory clearing, no-disk plaintext |
 | Ephemeral | Ветка core RAM реализована | File tracing Tauri/WebView/OS; policy для exports и swap |
 | STIX 2.1 / MISP | Serializers есть | Официальный STIX validator / импорт в выбранную версию MISP |
-| Установщики ≤50 MB | Не созданы | Release artifact sizes, зависимость WebView, подпись |
+| Установщики ≤50 MB | CI создаёт пакеты; единый лимит 50 MB не подтверждён | Release artifact sizes, зависимость WebView, подпись |
 | Двойной клик / запуск ≤2 s | Не проверено | Cold/warm start и чистая offline VM на каждой ОС |
 
 ## Функциональный gate

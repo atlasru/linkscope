@@ -1,97 +1,211 @@
 # LinkScope
 
-Локальное desktop-приложение для анализа связей: Rust / Tokio / petgraph / Tantivy / SQLite WAL / Tauri / WebGL2. Лицензия MIT.
+**Fast, local-first OSINT link analysis for the desktop.**
 
-**Статус: инженерный прототип. Ядро и Tauri скомпилированы в GitHub Actions на Windows, Linux и macOS; 13 Rust-тестов и 5 JavaScript-тестов прошли. Показатели FPS, RAM, времени запуска и сетевой анонимности ещё не измерены.**
+LinkScope is an open-source desktop application for investigating relationships between domains, IP addresses, usernames, URLs, email addresses and other entities.
 
-Сборки: [Desktop build](https://github.com/atlasru/linkscope/actions/runs/34642664740). Пакеты публикуются в разделе **Artifacts**: Windows x64 — NSIS `.exe`; Linux x64 — `.deb` / `.AppImage`; macOS Apple Silicon — `.dmg`. Подпись и notarization не настроены.
+It combines an interactive graph workspace with OSINT transforms, local search and privacy-aware networking — without requiring a cloud account or sending your investigation graph to a central service.
 
+> **Status:** LinkScope is currently an early engineering release. Core functionality works and desktop builds are produced for Windows, Linux and macOS, but the project is still under active development.
 
-## Что реализовано в исходниках
+## Features
 
-- In-memory property graph с идентификаторами UUIDv5, дедупликацией узлов и рёбер, происхождением связей, координатами и временем наблюдения.
-- Один worker-поток владеет графом, SQLite и Tantivy. Tokio-команды обращаются к нему через ограниченный канал на 32 команды.
-- Пакетные SQL-транзакции, WAL, `synchronous=FULL`, отдельный append-only журнал с контрольной суммой и идентификатором транзакции. Повторное применение журнала идемпотентно; неполная последняя строка обрезается, повреждение законченной записи останавливает восстановление.
-- Ограничение размера batch, ответа, объекта и кэша. Вытеснение payload холодных узлов в существующее SQLite-хранилище и загрузка по запросу; топология остаётся в RAM.
-- Локальный Tantivy-индекс: все сериализованные поля узла, fuzzy distance 1. Индекс производный; строится из SQLite при запуске.
-- Единая сеть: `reqwest`, HTTPS, маршруты per-source, SOCKS5 с удалённым DNS (`socks5h`), HTTP/HTTPS-прокси, DoH для явно выбранного прямого режима. Системный resolver запрещён через `DenyDns`; прокси указывается IP-литералом.
-- Per-source concurrency 2, интервал 1,1 секунды, circuit breaker, до 3 попыток с backoff, ограниченный `Retry-After`, SQLite TTL-кэш до 32 MiB.
-- `Transform` trait + `inventory` для встроенных источников. JSON-манифесты для новых HTTP-источников с уже имеющимся parser; ядро пересобирать не нужно. Загрузка манифестов при перезапуске.
-- До 10 одновременных трансформаций через `buffer_unordered(10)`. Прогресс и пакеты приходят по ограниченному каналу; отмена прекращает ожидание сети. Уже зафиксированные изменения остаются в графе.
-- Tauri UI с локальными ресурсами: WebGL2, контекстное меню, инспектор, поиск, временной фильтр, экспорт, настройки маршрутов, age-vault.
-- GPU-релаксация через WebGL2 transform feedback. Ограниченная аппроксимация: 4 соседних пружины и 8 выборок отталкивания на узел. Это не полный ForceAtlas2/Barnes–Hut.
-- Louvain на взвешенной ненаправленной проекции графа в отдельном Web Worker; выпуклые полупрозрачные оболочки на Canvas.
-- Экспорт JSON / GraphML / STIX 2.1 с `x_linkscope_*` / MISP Event JSON. Чтение из SQLite страницами; полная копия графа для экспорта не нужна.
-- Локальное age-шифрование ключей с парольной фразой, очистка хранилища из памяти, атомарная замена файла через tempfile. Адаптеры с авторизацией пока не используют эти ключи.
+### Interactive link analysis
 
-## Запуск из исходников
+Build investigations as graphs of entities and relationships.
 
-На машине разработчика нужны Rust stable, платформенные зависимости Tauri и Tauri CLI. У конечного пользователя после сборки Node/Rust/Python не нужны; системный WebView остаётся зависимостью.
+- Interactive WebGL2 graph visualization
+- Entity inspector and context actions
+- Search across graph data
+- Time-based filtering
+- Automatic community detection
+- Visual clustering
+- Stable entity identifiers and deduplication
+- Relationship provenance and observation timestamps
+
+LinkScope is designed to keep large investigations responsive by storing graph topology in memory while moving colder data to local storage when necessary.
+
+### OSINT transforms
+
+Run transforms directly from entities in the graph and automatically add discovered relationships.
+
+LinkScope supports built-in sources as well as declarative HTTP source plugins. Multiple transforms can run concurrently and can be cancelled without discarding results that have already been committed.
+
+See [docs/sources.md](docs/sources.md) for the current source matrix.
+
+### Local-first by design
+
+Investigation data stays on your machine.
+
+LinkScope uses:
+
+- SQLite WAL for persistent graph storage
+- Tantivy for local full-text search
+- Local transaction journaling for recovery
+- Local encrypted storage for secrets
+- No mandatory account
+- No central LinkScope backend
+
+An `--ephemeral` mode is also available for investigations that should not use LinkScope's normal persistent graph, index, configuration, plugin, log or key files.
+
+### Privacy-aware networking
+
+Network routing can be configured independently for different sources.
+
+Supported modes include:
+
+- Offline
+- Direct HTTPS
+- HTTP/HTTPS proxy
+- SOCKS5 with remote DNS (`socks5h`)
+- DNS-over-HTTPS for explicitly enabled direct connections
+
+LinkScope starts in **Offline** mode. Network access must be explicitly configured.
+
+Example SOCKS proxy:
+
+```text
+socks5h://127.0.0.1:9050
+```
+
+LinkScope does not currently bundle Tor or another anonymity network. A configured proxy must already be available on the system.
+
+### Export
+
+Investigations can be exported to common formats:
+
+- JSON
+- GraphML
+- STIX 2.1
+- MISP Event JSON
+
+Exports are streamed from local storage instead of requiring another complete copy of the investigation graph in memory.
+
+## Desktop builds
+
+GitHub Actions currently produces packages for:
+
+| Platform | Package |
+| --- | --- |
+| Windows x64 | NSIS `.exe` |
+| Linux x64 | `.deb`, `.AppImage` |
+| macOS Apple Silicon | `.dmg` |
+
+Current build artifacts are available from [GitHub Actions](https://github.com/atlasru/linkscope/actions).
+
+Builds are currently unsigned. macOS notarization is not configured yet.
+
+## Getting started
+
+1. Launch LinkScope.
+2. Add an entity such as a domain, IP address, username, URL or email address.
+3. Open **Settings** if the investigation requires network access and select a route.
+4. Select an entity.
+5. Run an available transform from the inspector or context menu.
+6. Explore newly discovered entities and relationships on the graph.
+
+The built-in demo creates a synthetic graph and does not perform network requests or modify the active investigation.
+
+## Build from source
+
+### Requirements
+
+- Rust stable
+- Tauri 2 platform dependencies
+- Tauri CLI
+
+Then:
 
 ```sh
 cargo test -p linkscope-core
 cargo install tauri-cli --version '^2' --locked
 cargo tauri dev
+```
+
+Create a release build with:
+
+```sh
 cargo tauri build
 ```
 
-Альтернатива CLI: `npm install`, затем `npm run dev` / `npm run build`.
-
-Выпускаемые зависимости пока не зафиксированы в `Cargo.lock` / `package-lock.json`: в репозиторий они пока не добавлены. Actions сохраняет разрешённые lock-файлы в артефакты `dependency-locks-*`. После проверки их следует закоммитить и перевести CI на `--locked` / `npm ci`.
-
-Для Linux нужны пакеты из официальной документации Tauri, в том числе WebKitGTK 4.1. Windows-сборка настроена **не скачивать WebView2**: на машине назначения он должен быть установлен заранее. Для строгого offline-установщика нужен отдельный вариант поставки runtime; лимит 50 MB при этом нельзя обещать. Поддержка Linux с glibc 2.31 пока не испытана.
+The frontend can alternatively be started through npm:
 
 ```sh
-# Путь зависит от платформы и результата сборки
+npm install
+npm run dev
+```
+
+Linux builds require the standard Tauri WebKitGTK dependencies. Windows uses the system WebView2 runtime.
+
+## Ephemeral mode
+
+Run LinkScope without opening its normal persistent investigation files:
+
+```sh
 ./target/release/linkscope --ephemeral
 ```
 
-Ephemeral не открывает файлы графа, журнала, настроек, плагинов, логов или ключей: SQLite и Tantivy работают в RAM. Явный экспорт пишет файл по запросу пользователя. Отсутствие следов системного WebView, swap, crash dump или ОС не гарантируется.
+SQLite and Tantivy operate in memory in this mode. Explicit exports still write files when requested by the user.
 
-## Первое использование
+Ephemeral mode only controls LinkScope-managed persistence. It cannot guarantee that the operating system, WebView runtime, swap, crash dumps or other system components leave no traces.
 
-1. Приложение открывается с пустым графом и маршрутом Offline.
-2. «Добавить сущность» → домен, IP, username, URL или email.
-3. Для сетевого запроса откройте «Настройки» и выберите маршрут.
-4. Пример прокси: `socks5h://127.0.0.1:9050`. Это адрес **уже имеющегося** прокси; встроенного Arti пока нет. Прокси с hostname и схемой `socks5://` отклоняется.
-5. Выберите узел и трансформацию в инспекторе или контекстном меню.
-6. «Демо» создаёт независимый синтетический граф в интерфейсе. Он не сохраняется в исследование и не запускает сетевые запросы. Новая реальная сущность возвращает сохранённый граф.
+## Plugins
 
-Переопределение маршрутов:
+Additional HTTP sources can be described using JSON manifests without recompiling the core application, provided the required response parser already exists.
 
-```json
-{
-  "github": {"mode":"proxy","url":"http://127.0.0.1:8080"},
-  "crtsh": {"mode":"offline"}
-}
+Example plugin manifests are available in [`plugins/`](plugins/).
+
+Currently supported parser types include:
+
+`doh`, `crt`, `certspotter`, `internetdb`, `urlscan`, `cdx`, `attributes`, `pointer`
+
+Plugin manifests are configuration, not executable native code. They can still send an entity value to their declared remote service, so only install manifests you trust.
+
+## Architecture
+
+LinkScope is built around a Rust core and a lightweight Tauri desktop interface.
+
+```text
+Tauri UI
+   │
+   ▼
+Rust / Tokio
+   │
+   ├── Property graph
+   ├── Transform engine
+   ├── Network routing
+   ├── SQLite persistence
+   └── Tantivy search
+
+WebGL2 ── graph rendering / layout
+Web Worker ── community detection
 ```
 
-Не записывайте API-ключи или proxy credentials в конфиг. В текущей версии прокси с user/password отклоняются. Режим Direct DoH требует `anonymous=false`: DoH скрывает DNS от локального resolver, но не делает соединение анонимным.
+Main technologies:
 
-## Файлы приложения
+- **Rust** — application core
+- **Tokio** — asynchronous execution
+- **petgraph** — graph structures
+- **SQLite** — durable local storage
+- **Tantivy** — local search index
+- **Tauri 2** — desktop shell
+- **WebGL2** — graph rendering and GPU-assisted layout
 
-- `~/.config/linkscope/config.json`
-- `~/.config/linkscope/plugins/*.json`
-- `~/.local/share/linkscope/graph.sqlite` (+ WAL/SHM)
-- `~/.local/share/linkscope/transactions.jsonl`
-- `~/.local/share/linkscope/keys.age`
-- `~/.local/share/linkscope/logs/events.jsonl` (+ одна ротация по 2 MiB)
-- `~/.local/share/linkscope/exports/`
+More detail: [docs/architecture.md](docs/architecture.md).
 
-Эти пути намеренно одинаковы по схеме на всех ОС. На Unix родительские каталоги получают `0700`. На Windows используются наследуемые ACL профиля; отдельное усиление ACL ещё не реализовано. Шифруются только ключи, не граф, HTTP-кэш или транзакционный журнал.
+## Project status
 
-## Плагины
+LinkScope is usable as an engineering prototype, but it should not yet be treated as a hardened forensic platform.
 
-Скопируйте `plugins/google-aaaa.json` в каталог плагинов и перезапустите приложение. Поддерживаемые parsers: `doh`, `crt`, `certspotter`, `internetdb`, `urlscan`, `cdx`, `attributes`, `pointer`. Для `pointer` задайте JSON Pointer и `output_kind`.
+Current development areas include performance validation on large graphs, network/privacy testing, packaging improvements, authentication-backed data sources and broader UI testing.
 
-Манифесты не исполняют код и не имеют файлового API. Они могут направлять значение входной сущности на объявленный HTTPS-хост, поэтому являются доверенной конфигурацией пользователя. Хост фиксируется до подстановки percent-encoded значения; redirects запрещены. Новый произвольный Rust parser требует пересборки. Нативный dynamic ABI / WASM sandbox не реализован.
+Verification and acceptance documentation:
 
-## Проверки и ограничения
+- [Architecture](docs/architecture.md)
+- [Source matrix](docs/sources.md)
+- [Acceptance tests](docs/acceptance.md)
+- [Verification status](docs/verification.md)
 
-- `node --test tests/model.test.mjs`: **5 тестов пройдено** в среде задания.
-- Проверка JS-синтаксиса: пройдена.
-- `cargo test -p linkscope-core`: 13 тестов **пройдены на трёх ОС**.
-- `tests/browser.mjs`: сценарий подготовлен, **не запускался успешно** из-за отсутствия браузера. Его результаты не являются измерением Tauri на T480.
-- `.github/workflows/check.yml`: предложенные gates для ядра и `cargo check` на трёх ОС. Workflow выполнен успешно на трёх ОС; release-пакеты собирает отдельный `build.yml`.
+## License
 
-Подробности: [архитектура](docs/architecture.md), [матрица источников](docs/sources.md), [приёмочные испытания](docs/acceptance.md), [результаты текущей проверки](docs/verification.md).
+LinkScope is released under the **MIT License**.

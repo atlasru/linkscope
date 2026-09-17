@@ -12,7 +12,21 @@ jobs:
         with:
           node-version: '22'
       - run: cargo test -p linkscope-core
-      - run: node --test tests/model.test.mjs
+      - run: node --test tests/model.test.mjs tests/webgl-init.test.mjs
+  browser-smoke:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save playwright
+      - run: npx playwright install --with-deps chromium
+      - name: Test normal WebGL2 startup and UI safe mode
+        run: |
+          python3 -m http.server 8765 --bind 127.0.0.1 --directory ui >/tmp/linkscope-http.log 2>&1 &
+          sleep 2
+          node tests/webgl-smoke.mjs
   desktop:
     strategy:
       fail-fast: false

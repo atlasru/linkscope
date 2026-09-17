@@ -27,6 +27,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add ui/app.js ui/renderer.js .github/workflows/check.yml
+          git add ui/app.js ui/renderer.js
           git commit -m "fix: compile GLSL and preserve UI when renderer fails"
           git push origin HEAD:fix/webgl-renderer-init

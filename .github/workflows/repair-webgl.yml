@@ -1,0 +1,32 @@
+name: Apply WebGL startup repair
+on:
+  push:
+    branches: [fix/webgl-renderer-init]
+    paths: [.github/workflows/repair-webgl.yml]
+permissions:
+  contents: write
+jobs:
+  repair:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply exact changes to inspected source
+        run: node scripts/apply-webgl-fix.mjs
+      - name: Verify JavaScript and run regression tests
+        run: |
+          node --check ui/app.js
+          node --check ui/renderer.js
+          node --check ui/fallback-renderer.js
+          node --test tests/model.test.mjs tests/webgl-init.test.mjs
+      - name: Commit verified source repair
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ui/app.js ui/renderer.js .github/workflows/check.yml
+          git commit -m "fix: compile GLSL and preserve UI when renderer fails"
+          git push origin HEAD:fix/webgl-renderer-init

@@ -12,9 +12,10 @@ test('GLSL does not use the reserved active identifier', () => {
   assert.match(shader, /this\.attrib\(p,'isActive',this\.activeBuffer,1\)/);
 });
 
-test('startup failures do not abort UI handler registration', () => {
+test('UI event handlers are registered before renderer startup', () => {
+  assert.ok(app.indexOf("$('settings').onclick=") < app.indexOf('startRenderer();'));
+  assert.ok(app.indexOf("canvas.onpointerdown=") < app.indexOf('startRenderer();'));
   assert.match(app, /new FallbackRenderer\(/);
-  assert.doesNotMatch(app, /WebGL2 недоступен';throw e/);
 });
 
 test('safe-mode renderer preserves non-GPU interaction contract', () => {

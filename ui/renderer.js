@@ -13,9 +13,50 @@ const layoutVS=`#version 300 es
 precision highp float;precision highp int;in vec2 position;in float isActive;uniform sampler2D positions;uniform sampler2D neighbors;uniform int width;uniform int count;out vec2 nextPosition;
 vec2 pos(int id){return texelFetch(positions,ivec2(id%width,id/width),0).xy;}
 void main(){int id=gl_VertexID;if(isActive<.5){nextPosition=position;return;}vec4 ids=texelFetch(neighbors,ivec2(id%width,id/width),0);vec2 force=vec2(0.);for(int k=0;k<4;k++){int j=int(ids[k]);if(j>=0){vec2 d=pos(j)-position;float dist=max(length(d),.01);force+=d/dist*(dist-35.)*.007;}}for(int k=1;k<=8;k++){int j=(id*13+k*7919)%count;if(j==id)continue;vec2 d=position-pos(j);float d2=max(dot(d,d),4.);force+=d/d2*8.;}float f=length(force);nextPosition=position+force/max(1.,f/2.);}`;
-function program(gl,vs,fs,feedback){const p=gl.createProgram();for(const[type,src]of[[gl.VERTEX_SHADER,vs],[gl.FRAGMENT_SHADER,fs]]){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(s));gl.attachShader(p,s);gl.deleteShader(s)}if(feedback)gl.transformFeedbackVaryings(p,feedback,gl.INTERLEAVED_ATTRIBS);gl.linkProgram(p);if(!gl.getProgramParameter(p,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(p));return p;}
+function program(gl,vs,fs,feedback){
+ const p=gl.createProgram();
+ if(!p)throw new Error('WebGL program creation failed');
+ try{
+  for(const[type,src]of[[gl.VERTEX_SHADER,vs],[gl.FRAGMENT_SHADER,fs]]){
+   const label=type===gl.VERTEX_SHADER?'vertex':'fragment',shader=gl.createShader(type);
+   if(!shader)throw new Error(`${label} shader creation failed`);
+   gl.shaderSource(shader,src);gl.compileShader(shader);
+   if(!gl.getShaderParameter(shader,gl.COMPILE_STATUS)){
+    const reason=gl.getShaderInfoLog(shader)||'no compiler log';gl.deleteShader(shader);
+    throw new Error(`${label} shader compilation failed: ${reason}`);
+   }
+   gl.attachShader(p,shader);gl.deleteShader(shader);
+  }
+  if(feedback)gl.transformFeedbackVaryings(p,feedback,gl.INTERLEAVED_ATTRIBS);
+  gl.linkProgram(p);
+  if(!gl.getProgramParameter(p,gl.LINK_STATUS))throw new Error(`shader link failed: ${gl.getProgramInfoLog(p)||'no linker log'}`);
+  return p;
+ }catch(error){gl.deleteProgram(p);throw error}
+}
 export class Renderer{
- constructor(canvas,onFrame){this.canvas=canvas;this.gl=canvas.getContext('webgl2',{alpha:false,antialias:false,preserveDrawingBuffer:false,powerPreference:'high-performance'});if(!this.gl)throw new Error('Требуется WebGL2. Проверьте аппаратное ускорение WebView.');const g=this.gl;this.drawProgram=program(g,vertex,fragment);this.layoutProgram=program(g,layoutVS,'#version 300 es\nprecision highp float;out vec4 c;void main(){c=vec4(0.);}', ['nextPosition']);this.camera=[0,0];this.zoom=1;this.timeRange=[-1e20,1e20];this.buffers=[];this.textures=[];this.layoutSteps=0;this.frames=0;this.frameStart=performance.now();this.onFrame=onFrame;this.dirty=true;this.continuous=false;this.lost=false;canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();this.lost=true;this.onFrame?.({error:'WebGL context lost — перезапустите просмотр'});});canvas.addEventListener('webglcontextrestored',()=>location.reload());this.observer=new ResizeObserver(()=>{this.resize();this.dirty=true});this.observer.observe(canvas);this.tick=this.tick.bind(this);requestAnimationFrame(this.tick);}
+ constructor(canvas,onFrame){
+  this.canvas=canvas;this.onFrame=onFrame;this.stopped=false;this.lost=false;
+  this.gl=canvas.getContext('webgl2',{alpha:false,antialias:false,preserveDrawingBuffer:false,powerPreference:'high-performance'});
+  if(!this.gl)throw new Error('WebGL2 context creation returned null');
+  const g=this.gl;
+  try{
+   this.drawProgram=program(g,vertex,fragment);
+   this.layoutProgram=program(g,layoutVS,'#version 300 es\nprecision highp float;out vec4 c;void main(){c=vec4(0.);}', ['nextPosition']);
+  }catch(error){if(this.drawProgram)g.deleteProgram(this.drawProgram);throw error}
+  this.camera=[0,0];this.zoom=1;this.timeRange=[-1e20,1e20];this.buffers=[];this.textures=[];this.layoutSteps=0;this.frames=0;this.frameStart=performance.now();this.dirty=true;this.continuous=false;
+  this.contextLost=e=>{e.preventDefault();this.lost=true;this.fail(new Error('WebGL context lost'))};
+  canvas.addEventListener('webglcontextlost',this.contextLost);
+  this.observer=new ResizeObserver(()=>{this.resize();this.dirty=true});this.observer.observe(canvas);
+  this.tick=this.tick.bind(this);this.frame=requestAnimationFrame(this.tick);
+ }
+ dispose(){
+  if(this.stopped)return;
+  this.stopped=true;cancelAnimationFrame(this.frame);this.observer?.disconnect();
+  this.canvas.removeEventListener('webglcontextlost',this.contextLost);
+  if(!this.lost){for(const b of this.buffers) this.gl.deleteBuffer(b);for(const t of this.textures)this.gl.deleteTexture(t);this.gl.deleteProgram(this.drawProgram);this.gl.deleteProgram(this.layoutProgram)}
+ }
+ fail(error){if(this.stopped)return;this.dispose();this.onFrame?.({error})}
+
  resize(){this.dpr=Math.min(devicePixelRatio||1,1.5);const r=this.canvas.getBoundingClientRect();this.width=r.width;this.height=r.height;this.canvas.width=Math.max(1,Math.round(r.width*this.dpr));this.canvas.height=Math.max(1,Math.round(r.height*this.dpr));}
  buffer(data,target=this.gl.ARRAY_BUFFER){const g=this.gl,b=g.createBuffer();this.buffers.push(b);g.bindBuffer(target,b);g.bufferData(target,data,g.DYNAMIC_DRAW);return b}
  texture(data,format,internal){const g=this.gl,t=g.createTexture();this.textures.push(t);g.bindTexture(g.TEXTURE_2D,t);g.texParameteri(g.TEXTURE_2D,g.TEXTURE_MIN_FILTER,g.NEAREST);g.texParameteri(g.TEXTURE_2D,g.TEXTURE_MAG_FILTER,g.NEAREST);g.texParameteri(g.TEXTURE_2D,g.TEXTURE_WRAP_S,g.CLAMP_TO_EDGE);g.texParameteri(g.TEXTURE_2D,g.TEXTURE_WRAP_T,g.CLAMP_TO_EDGE);g.texImage2D(g.TEXTURE_2D,0,internal,this.texWidth,this.texHeight,0,format,g.FLOAT,data);return t}
@@ -29,7 +70,16 @@ export class Renderer{
  readPositions(){if(!this.model)return;const g=this.gl,p=new Float32Array(this.count*2);g.bindBuffer(g.ARRAY_BUFFER,this.posBuffers[this.front]);g.getBufferSubData(g.ARRAY_BUFFER,0,p);this.model.setPositions(p);}
  startLayout(indices){if(!this.count)return;this.active.fill(indices?0:1);for(const i of indices||[])this.active[i]=1;const g=this.gl;g.bindBuffer(g.ARRAY_BUFFER,this.activeBuffer);g.bufferSubData(g.ARRAY_BUFFER,0,this.active);this.layoutSteps=100;this.dirty=true;}
  draw(){const g=this.gl,p=this.drawProgram;g.viewport(0,0,this.canvas.width,this.canvas.height);g.clearColor(.047,.071,.106,1);g.clear(g.COLOR_BUFFER_BIT);if(!this.count)return;g.useProgram(p);this.attrib(p,'position',this.posBuffers[this.front],2);this.attrib(p,'color',this.metaBuffer,3,24,0);this.attrib(p,'confidence',this.metaBuffer,1,24,12);this.attrib(p,'timestamp',this.metaBuffer,1,24,16);this.attrib(p,'selected',this.metaBuffer,1,24,20);this.uniform(p,'resolution','uniform2f',this.width,this.height);this.uniform(p,'camera','uniform2fv',this.camera);this.uniform(p,'zoom','uniform1f',this.zoom);this.uniform(p,'dpr','uniform1f',this.dpr);this.uniform(p,'timeRange','uniform2fv',this.timeRange);g.enable(g.BLEND);g.blendFunc(g.SRC_ALPHA,g.ONE_MINUS_SRC_ALPHA);this.uniform(p,'edges','uniform1i',1);g.bindBuffer(g.ELEMENT_ARRAY_BUFFER,this.edgeBuffer);g.drawElements(g.LINES,this.edgeCount,g.UNSIGNED_INT,0);this.uniform(p,'edges','uniform1i',0);this.uniform(p,'pointSize','uniform1f',this.count>5000?3:9);g.drawArrays(g.POINTS,0,this.count);g.disable(g.BLEND);}
- tick(t){if(this.lost)return;let drew=false;if(this.layoutSteps>0&&this.count){this.step();this.layoutSteps--;this.dirty=true;if(this.layoutSteps===0){this.readPositions();this.onFrame?.({layoutDone:true});}}if(this.dirty||this.continuous){this.draw();this.dirty=false;this.frames++;drew=true;}if(t-this.frameStart>=1000){this.onFrame?.({fps:this.frames*1000/(t-this.frameStart),idle:!drew&&!this.continuous});this.frames=0;this.frameStart=t;}requestAnimationFrame(this.tick)}
+ tick(t){if(this.stopped)return;
+  try{
+   let drew=false;
+   if(this.layoutSteps>0&&this.count){this.step();this.layoutSteps--;this.dirty=true;if(this.layoutSteps===0){this.readPositions();this.onFrame?.({layoutDone:true})}}
+   if(this.dirty||this.continuous){this.draw();this.dirty=false;this.frames++;drew=true}
+   if(t-this.frameStart>=1000){this.onFrame?.({fps:this.frames*1000/(t-this.frameStart),idle:!drew&&!this.continuous});this.frames=0;this.frameStart=t}
+   if(!this.stopped)this.frame=requestAnimationFrame(this.tick);
+  }catch(error){this.fail(error)}
+ }
+
  screen(i){return[(this.model.positions[i*2]-this.camera[0])*this.zoom+this.width/2,(this.model.positions[i*2+1]-this.camera[1])*this.zoom+this.height/2]}
  pick(x,y){if(this.layoutSteps>0)this.readPositions();let best=-1,dist=144;for(let i=0;i<this.count;i++){const n=this.model.nodes[i];if(n.timestamp<this.timeRange[0]||n.timestamp>this.timeRange[1])continue;const[sx,sy]=this.screen(i),d=(sx-x)**2+(sy-y)**2;if(d<dist){dist=d;best=i}}return best}
 }

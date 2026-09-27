@@ -58,7 +58,7 @@ try {
   // The same WebGL canvas must remain an event target when the context is lost.
   await normal.locator('#graph').evaluate(canvas => canvas.dispatchEvent(new Event('webglcontextlost', {cancelable:true})));
   await normal.waitForFunction(() => linkscope.renderer.disabled);
-  assert.match(await normal.locator('#status').textContent(), /context lost/);
+  assert.match(await normal.locator('#status').textContent(), /потерян WebGL-контекст/);
   await normal.click('#settings');
   assert.equal(await normal.locator('#settings-dialog').evaluate(d => d.open), true);
   await normal.close();

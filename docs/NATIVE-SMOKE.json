@@ -1,0 +1,14 @@
+{
+  "entities": 4,
+  "ok": true,
+  "relationships": 1,
+  "steps": [
+    "create entity through actual dialog and Rust patch",
+    "directed relationship",
+    "inspector edit",
+    "delete cascade and restore",
+    "CSV import real Rust parser",
+    "Canvas2D compatibility surface"
+  ],
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36 Edg/155.0.0.0"
+}

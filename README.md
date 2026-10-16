@@ -1,211 +1,131 @@
-# LinkScope
+# LinkScope 2.0
 
-**Fast, local-first OSINT link analysis for the desktop.**
+A local graph editor and investigation workbench. The replacement source lives
+in `crates/engine`, `crates/transforms`, `src-tauri`, and `ui`. No account, AI service,
+analytics or telemetry is used. External research is an explicit contextual action
+with a named destination and a result preview.
 
-LinkScope is an open-source desktop application for investigating relationships between domains, IP addresses, usernames, URLs, email addresses and other entities.
+This is an implemented foundation, not a declaration of production readiness.
+See [validation](docs/VALIDATION.md) for measured results and outstanding work.
 
-It combines an interactive graph workspace with OSINT transforms, local search and privacy-aware networking — without requiring a cloud account or sending your investigation graph to a central service.
+## Preserve and inspect
 
-> **Status:** LinkScope is currently an early engineering release. Core functionality works and desktop builds are produced for Windows, Linux and macOS, but the project is still under active development.
+- The [legacy branch](https://github.com/atlasru/linkscope/tree/legacy) preserves
+  the older application at `53c672af7f7e879b493c1d830c41dfce3ace8aa7`, including
+  its full commit history.
+- During development, independent source copies were also retained locally in
+  `legacy/` and `preserved-local/`. Those local backups and generated dependencies
+  are excluded from this branch.
+- [Source audit](docs/LEGACY-AUDIT.md) and [architecture](docs/ARCHITECTURE.md).
 
-## Features
+The replacement advances the original repository history. The older application
+remains available on `legacy`; no history rewrite is required.
 
-### Interactive link analysis
+## Develop on Windows
 
-Build investigations as graphs of entities and relationships.
+Install Node 22.12+ (Node24 tested), Rust stable, Edge WebView2 Runtime, and native
+Rust build prerequisites. Standard Tauri development uses MSVC C++ Build Tools and
+a Windows SDK. This machine also has `C:\msys64\mingw64`; a **full GNU host** Rust
+toolchain can be used when the MSVC linker is missing:
 
-- Interactive WebGL2 graph visualization
-- Entity inspector and context actions
-- Search across graph data
-- Time-based filtering
-- Automatic community detection
-- Visual clustering
-- Stable entity identifiers and deduplication
-- Relationship provenance and observation timestamps
-
-LinkScope is designed to keep large investigations responsive by storing graph topology in memory while moving colder data to local storage when necessary.
-
-### OSINT transforms
-
-Run transforms directly from entities in the graph and automatically add discovered relationships.
-
-LinkScope supports built-in sources as well as declarative HTTP source plugins. Multiple transforms can run concurrently and can be cancelled without discarding results that have already been committed.
-
-See [docs/sources.md](docs/sources.md) for the current source matrix.
-
-### Local-first by design
-
-Investigation data stays on your machine.
-
-LinkScope uses:
-
-- SQLite WAL for persistent graph storage
-- Tantivy for local full-text search
-- Local transaction journaling for recovery
-- Local encrypted storage for secrets
-- No mandatory account
-- No central LinkScope backend
-
-An `--ephemeral` mode is also available for investigations that should not use LinkScope's normal persistent graph, index, configuration, plugin, log or key files.
-
-### Privacy-aware networking
-
-Network routing can be configured independently for different sources.
-
-Supported modes include:
-
-- Offline
-- Direct HTTPS
-- HTTP/HTTPS proxy
-- SOCKS5 with remote DNS (`socks5h`)
-- DNS-over-HTTPS for explicitly enabled direct connections
-
-LinkScope starts in **Offline** mode. Network access must be explicitly configured.
-
-Example SOCKS proxy:
-
-```text
-socks5h://127.0.0.1:9050
+```powershell
+rustup toolchain install stable-x86_64-pc-windows-gnu
+npm.cmd ci
+.\scripts\windows.ps1 Check
+.\scripts\windows.ps1 Dev
+.\scripts\windows.ps1 Build
 ```
 
-LinkScope does not currently bundle Tor or another anonymity network. A configured proxy must already be available on the system.
+The script selects the available GNU host if installed; otherwise it uses the
+normal configured Rust toolchain. Outside that environment:
 
-### Export
-
-Investigations can be exported to common formats:
-
-- JSON
-- GraphML
-- STIX 2.1
-- MISP Event JSON
-
-Exports are streamed from local storage instead of requiring another complete copy of the investigation graph in memory.
-
-## Desktop builds
-
-GitHub Actions currently produces packages for:
-
-| Platform | Package |
-| --- | --- |
-| Windows x64 | NSIS `.exe` |
-| Linux x64 | `.deb`, `.AppImage` |
-| macOS Apple Silicon | `.dmg` |
-
-Current build artifacts are available from [GitHub Actions](https://github.com/atlasru/linkscope/actions).
-
-Builds are currently unsigned. macOS notarization is not configured yet.
-
-## Getting started
-
-1. Launch LinkScope.
-2. Add an entity such as a domain, IP address, username, URL or email address.
-3. Open **Settings** if the investigation requires network access and select a route.
-4. Select an entity.
-5. Run an available transform from the inspector or context menu.
-6. Explore newly discovered entities and relationships on the graph.
-
-The built-in demo creates a synthetic graph and does not perform network requests or modify the active investigation.
-
-## Build from source
-
-### Requirements
-
-- Rust stable
-- Tauri 2 platform dependencies
-- Tauri CLI
-
-Then:
-
-```sh
-cargo test -p linkscope-core
-cargo install tauri-cli --version '^2' --locked
-cargo tauri dev
+```powershell
+npm.cmd ci
+npm.cmd run desktop
+npm.cmd run desktop:build
 ```
 
-Create a release build with:
+`npm run dev` is a frontend development server. File access and graph mutation
+require the desktop IPC; a plain browser reports that requirement explicitly.
+It does not simulate saved projects. `desktop:build` builds an executable without
+installers, signing, releases, tags or publication.
 
-```sh
-cargo tauri build
+The validated standalone development build is:
+
+```powershell
+cargo build --locked -p linkscope-desktop --features custom-protocol
+cargo test --locked -p linkscope-desktop --features custom-protocol
 ```
 
-The frontend can alternatively be started through npm:
+Keep `WebView2Loader.dll` beside the resulting
+`target/debug/linkscope-desktop.exe`. The native executable and its Rust IPC have
+been exercised; optimized installer/release packaging has not been validated.
 
-```sh
-npm install
-npm run dev
+## Use
+
+Double-click empty canvas or press N to add an entity. Drag to move; drag empty
+space to pan; wheel to zoom. Shift-click or Shift-drag selects several objects.
+L connects two clicked entities; V returns to selection. Select a relationship
+on the canvas to edit its type, properties or direction. Edits are applied from
+the inspector; Delete and Ctrl+Z remove and restore records and incident links.
+
+Ctrl+K opens searchable commands with shortcuts. Ctrl+G groups a selection.
+Merge preserves original records in metadata; Split explicitly transfers selected
+properties to a new identity. Duplicate creates a separate copy. Collections can
+be selected and ungrouped in the explorer. Panels resize at their dividers and
+collapse with the header buttons or Ctrl+B / Ctrl+Shift+B.
+
+Import UTF-8 JSON, CSV or TXT through Import, or use `Import pasted text` in
+commands. CSV record labels and types can be mapped in the preview. Text extraction
+produces candidate observations without invented relationships. Explicit graph
+JSON uses `entities`, `relationships`, and optional `collections`; see
+[format](docs/FORMAT.md). External IDs are remapped when importing into an existing
+project, so equal labels/IDs never silently merge unrelated records.
+
+Select a `domain` entity for DNS, RDAP or certificate observations; available
+commands disclose their destination before running. The full project is never
+sent. Jobs can be cancelled; results require an explicit Add to graph action.
+Each accepted result/import is one undoable edit. Public service errors are real
+errors and are not replaced with example results.
+
+Ctrl+S saves a portable `.linkscope` JSON project. Ctrl+O reopens one. Autosave
+stores the active project in Tauri's platform app-data directory for
+`local.linkscope.v2` every three seconds when changed and on normal close. A
+previous valid generation is retained in `.bak`; interrupted `.pending` saves can
+be loaded. Corrupt originals are retained, and recovered projects should be saved
+under a new filename. New/Open archives the previous nonempty working graph in
+the app-data `recoveries/` folder. Undo history stays in memory. Panel dimensions,
+visibility and camera persist separately. One process owns an app-data directory.
+
+## Validate
+
+```powershell
+.\scripts\windows.ps1 Test
+cargo test --locked -p linkscope-engine -p linkscope-transforms
+npm.cmd test
+npm.cmd run test:ui
+npm.cmd run build
+.\scripts\windows.ps1 Benchmark
+node node_modules/tsx/dist/cli.mjs scripts/benchmark-renderer.ts
 ```
 
-Linux builds require the standard Tauri WebKitGTK dependencies. Windows uses the system WebView2 runtime.
+For the native WebView/Rust interaction smoke, first build the debug executable
+with `--features custom-protocol`, then run `.\scripts\native-smoke.ps1`.
+It uses a fresh test directory and actual IPC, never a browser adapter. Windows
+file dialogs still require a manual check; this runner does not assert they work.
+For a deliberate crash/reopen check, run the debug executable with `--data-dir`
+pointing to an isolated native smoke fixture, `--smoke-test` pointing to a result
+JSON path, and `--smoke-restore`; it verifies the expected persisted fixture.
 
-## Ephemeral mode
+Rust tests cover graph invariants/history, migration, corruption/recovery, imports,
+and transformation concurrency, rate limiting, cancellation and timeout. Browser
+tests exercise real Canvas2D/worker interactions and DOM wiring with an explicitly
+test-only IPC adapter. Native smoke validation must separately exercise the actual
+WebView and Rust boundary. Performance numbers separate graph operations, CPU
+visibility queries and actual Canvas2D frames; none implies every target-size
+element is rendered smoothly at once.
 
-Run LinkScope without opening its normal persistent investigation files:
-
-```sh
-./target/release/linkscope --ephemeral
-```
-
-SQLite and Tantivy operate in memory in this mode. Explicit exports still write files when requested by the user.
-
-Ephemeral mode only controls LinkScope-managed persistence. It cannot guarantee that the operating system, WebView runtime, swap, crash dumps or other system components leave no traces.
-
-## Plugins
-
-Additional HTTP sources can be described using JSON manifests without recompiling the core application, provided the required response parser already exists.
-
-Example plugin manifests are available in [`plugins/`](plugins/).
-
-Currently supported parser types include:
-
-`doh`, `crt`, `certspotter`, `internetdb`, `urlscan`, `cdx`, `attributes`, `pointer`
-
-Plugin manifests are configuration, not executable native code. They can still send an entity value to their declared remote service, so only install manifests you trust.
-
-## Architecture
-
-LinkScope is built around a Rust core and a lightweight Tauri desktop interface.
-
-```text
-Tauri UI
-   │
-   ▼
-Rust / Tokio
-   │
-   ├── Property graph
-   ├── Transform engine
-   ├── Network routing
-   ├── SQLite persistence
-   └── Tantivy search
-
-WebGL2 ── graph rendering / layout
-Web Worker ── community detection
-```
-
-Main technologies:
-
-- **Rust** — application core
-- **Tokio** — asynchronous execution
-- **petgraph** — graph structures
-- **SQLite** — durable local storage
-- **Tantivy** — local search index
-- **Tauri 2** — desktop shell
-- **WebGL2** — graph rendering and GPU-assisted layout
-
-More detail: [docs/architecture.md](docs/architecture.md).
-
-## Project status
-
-LinkScope is usable as an engineering prototype, but it should not yet be treated as a hardened forensic platform.
-
-Current development areas include performance validation on large graphs, network/privacy testing, packaging improvements, authentication-backed data sources and broader UI testing.
-
-Verification and acceptance documentation:
-
-- [Architecture](docs/architecture.md)
-- [Source matrix](docs/sources.md)
-- [Acceptance tests](docs/acceptance.md)
-- [Verification status](docs/verification.md)
-
-## License
-
-LinkScope is released under the **MIT License**.
+The current native file-dialog implementation is Windows-specific. macOS/Linux
+desktop packaging and dialogs remain a porting task. CI checks the new engine,
+frontend and desktop packages. Build jobs upload artifacts without creating
+releases or changing repository settings.

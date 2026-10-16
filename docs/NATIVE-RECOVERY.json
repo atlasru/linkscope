@@ -1,0 +1,10 @@
+{
+  "entities": 4,
+  "ok": true,
+  "relationships": 1,
+  "steps": [
+    "restore dirty autosave after abrupt process termination",
+    "retain edited label, imported properties and relationship"
+  ],
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36 Edg/155.0.0.0"
+}

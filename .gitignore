@@ -1,7 +1,12 @@
 /target/
 /node_modules/
+/dist/
 /test-results/
-*.sqlite*
-*.age
+/test-results-canvas/
+/playwright-report/
+/legacy/
+/preserved-local/
+/.local/
+/src-tauri/gen/
 *.log
-.DS_Store
+*.pending

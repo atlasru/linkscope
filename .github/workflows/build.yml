@@ -14,13 +14,10 @@ jobs:
         include:
           - platform: windows
             os: windows-2022
-            bundles: nsis
           - platform: linux
             os: ubuntu-22.04
-            bundles: deb,appimage
           - platform: macos
             os: macos-14
-            bundles: dmg
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
@@ -29,25 +26,25 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: npm
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.platform }}
       - name: Linux prerequisites
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
-      - run: npm install
-      - run: node --test tests/model.test.mjs
-      - run: cargo test -p linkscope-core
-      - run: npm run build -- --bundles ${{ matrix.bundles }}
+      - run: npm ci
+      - run: npm test
+      - run: cargo test --locked -p linkscope-engine -p linkscope-transforms
+      - run: npm run desktop:build
       - uses: actions/upload-artifact@v4
         with:
           name: linkscope-${{ matrix.platform }}-${{ github.sha }}
           if-no-files-found: error
           path: |
-            target/release/bundle/nsis/*.exe
-            target/release/bundle/deb/*.deb
-            target/release/bundle/appimage/*.AppImage
-            target/release/bundle/dmg/*.dmg
+            target/release/linkscope-desktop.exe
+            target/release/WebView2Loader.dll
+            target/release/linkscope-desktop
       - name: Preserve resolved dependencies
         if: always()
         uses: actions/upload-artifact@v4

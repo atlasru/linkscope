@@ -1,0 +1,207 @@
+[
+  {
+    "path": ".gitignore",
+    "sha256": "0B2997A26A0AC38A74A4B4A8EEFF42E456794FF698DC2EFB6F760E60228E3CE4",
+    "matchesOriginal": true
+  },
+  {
+    "path": "Cargo.lock",
+    "sha256": "DD4762969CFCD5D7857F752EA1DA1334A26BD07D62C69FDDC294717E5B03D7E9",
+    "matchesOriginal": true
+  },
+  {
+    "path": "Cargo.toml",
+    "sha256": "F3E28A3CE0ECBCEAD82C29E36F10D32E157B3385A25F5C460B33CA9975FB4AC8",
+    "matchesOriginal": true
+  },
+  {
+    "path": "LICENSE",
+    "sha256": "9E1A3A3E9B4F575843E9B8259BCFA714940F2B16B6ABC69C5F81F66367A7B971",
+    "matchesOriginal": true
+  },
+  {
+    "path": "linkscope-preview.html",
+    "sha256": "3D32F408F8E555CAB0F3D742E770F9E42BDB98C8F888DE48F208DD730EDEEE4E",
+    "matchesOriginal": true
+  },
+  {
+    "path": "package-lock.json",
+    "sha256": "9A7AF952A98679D7805A5E687DD5D16B121DF351F1D6BC7B23B8ADCF518BF618",
+    "matchesOriginal": true
+  },
+  {
+    "path": "package.json",
+    "sha256": "231BCB576649D374A1F65248700805DFD5BCE9833BD2388BE05257C431DF4FBB",
+    "matchesOriginal": true
+  },
+  {
+    "path": "README.md",
+    "sha256": "E2C920BD35BFB95DB8E7B4041D1D2315F446CB6655C78C22F65F0B77AC899FB4",
+    "matchesOriginal": true
+  },
+  {
+    "path": ".github\\workflows\\check.yml",
+    "sha256": "878CE62A8F8F15C7A8662D0F91785723D3DC0E700B317F326F308D226F094C0E",
+    "matchesOriginal": true
+  },
+  {
+    "path": "crates\\core\\Cargo.toml",
+    "sha256": "B3115B9CF340EEC8635D06BC09610F9A44EFADDBA137CB5F2D6A4559F2643D85",
+    "matchesOriginal": true
+  },
+  {
+    "path": "crates\\core\\src\\audit.rs",
+    "sha256": "C3F4E05F9DF635AF49EC60B5AA93D27DB03D3F58CFE6E069D893A9D947C89E81",
+    "matchesOriginal": true
+  },
+  {
+    "path": "crates\\core\\src\\engine.rs",
+    "sha256": "8FC97C54420AEAD6F8AD789F8C814539EC4C1DCE749955F224627DCEDEB7AF74",
+    "matchesOriginal": true
+  },
+  {
+    "path": "crates\\core\\src\\export.rs",
+    "sha256": "AEC94857A07471A14C6EA532B396FCF96965C0D650420CDE5A345983645A05DE",
+    "matchesOriginal": true
+  },
+  {
+    "path": "crates\\core\\src\\graph.rs",
+    "sha256": "F02D2E08C733E571BFBADA95C905FE967BAC1D6E3B260BDC46FE687B91F07026",
+    "matchesOriginal": true
+  },
+  {
+    "path": "crates\\core\\src\\lib.rs",
+    "sha256": "F00CD32918D22EA7FFB5B41A146A031A54A5771CC74EAE6A2196D22D0DA4C6AE",
+    "matchesOriginal": true
+  },
+  {
+    "path": "crates\\core\\src\\model.rs",
+    "sha256": "B0C5524E9E9AF642996A2464F9B8FC5FC219F55234C64B955984CDB33D454BE6",
+    "matchesOriginal": true
+  },
+  {
+    "path": "crates\\core\\src\\network.rs",
+    "sha256": "285D6FD6915C7F9D9916A6BEDC5080C57654EB231453C0DA0FEFAF216F886FAB",
+    "matchesOriginal": true
+  },
+  {
+    "path": "crates\\core\\src\\search.rs",
+    "sha256": "9E2B3FBD616610DAA17674B316F8C5820FCAC614E8A84612B827E3B9C78DB196",
+    "matchesOriginal": true
+  },
+  {
+    "path": "crates\\core\\src\\storage.rs",
+    "sha256": "1629CC37E3D30700DA270A1941AE29EB63FF403278BACB166FE88036328006F2",
+    "matchesOriginal": true
+  },
+  {
+    "path": "crates\\core\\src\\transform.rs",
+    "sha256": "7E9FA2F1FED6FDDD9DBE1ABA3347A24EABB68DEB088B452B511B51EF96C4E447",
+    "matchesOriginal": true
+  },
+  {
+    "path": "crates\\core\\src\\vault.rs",
+    "sha256": "341EB813628F6C9ED7927EB84D3451CCF9E20AA62651FB816B4EFDB9342163D5",
+    "matchesOriginal": true
+  },
+  {
+    "path": "crates\\core\\tests\\core.rs",
+    "sha256": "9847D308D0E706315346214776E48E01AE19698DEA052DEB0591AB2E636F439E",
+    "matchesOriginal": true
+  },
+  {
+    "path": "docs\\acceptance.md",
+    "sha256": "918D92770DB0732F26FBF90660A052A792ADF373378B9A1832E003787E7586A5",
+    "matchesOriginal": true
+  },
+  {
+    "path": "docs\\architecture.md",
+    "sha256": "81A86E9786841F68B5B34670B1A001BB3DBCA0DBD1C304AF16A3ECADC66F8F13",
+    "matchesOriginal": true
+  },
+  {
+    "path": "docs\\sources.md",
+    "sha256": "F5F1F67046682737C2B3292DEAC25811CE5F4F1C07253FB62A68942CB80F5F3E",
+    "matchesOriginal": true
+  },
+  {
+    "path": "docs\\verification.md",
+    "sha256": "02A34D7753A6EF12933C0B7C568F5DC9B0FC288B56A98D08045188C4146DF826",
+    "matchesOriginal": true
+  },
+  {
+    "path": "plugins\\google-aaaa.json",
+    "sha256": "49D7104A5879DCA9C6909DC7A2787E70C4EE2298474D7336F671ECD06B25943E",
+    "matchesOriginal": true
+  },
+  {
+    "path": "scripts\\build-preview.py",
+    "sha256": "9E409A8A1E783FC452015A204768D0B0F64E157BCF5057C4EDFAB3B55CCDB849",
+    "matchesOriginal": true
+  },
+  {
+    "path": "src-tauri\\build.rs",
+    "sha256": "8AF41C0062014FC594E4BB9899E60EE9930AB57D4CF0C73041FF557D6EC736E6",
+    "matchesOriginal": true
+  },
+  {
+    "path": "src-tauri\\Cargo.toml",
+    "sha256": "97804AC445ACE770C8DC91970592D6CB422ACF2FC197D50646457B648F548FBA",
+    "matchesOriginal": true
+  },
+  {
+    "path": "src-tauri\\tauri.conf.json",
+    "sha256": "B2DAF270A83D9BF8CB784A79028E6C2EDF032A15424E35552D867E71D5FC5569",
+    "matchesOriginal": true
+  },
+  {
+    "path": "src-tauri\\capabilities\\main.json",
+    "sha256": "1BA636675A634816CF9503A6CDB481177A4A6DE0BFFFFB0406352250CA8F14B3",
+    "matchesOriginal": true
+  },
+  {
+    "path": "src-tauri\\src\\main.rs",
+    "sha256": "E413AE328FC5EA3930DD959FDA1F2009F1C36284179980CD0518E51859F93138",
+    "matchesOriginal": true
+  },
+  {
+    "path": "tests\\browser.mjs",
+    "sha256": "73C27BF8F0EB25F889C6E8F1204521AE6F0CEA1B0A5AEA89F5BE748D6E688660",
+    "matchesOriginal": true
+  },
+  {
+    "path": "tests\\model.test.mjs",
+    "sha256": "6D41F9DAA219BF9B9FF2BE5532155C110F6D1D464E2D51BC8ECA71B2F9B9496C",
+    "matchesOriginal": true
+  },
+  {
+    "path": "ui\\app.js",
+    "sha256": "34CAA8871F1FEEEF08C45D03A16BE0A502C9CD9367A3CB16A2837FE2B89DB517",
+    "matchesOriginal": true
+  },
+  {
+    "path": "ui\\community.js",
+    "sha256": "98C1D1C45956809C01F61E720ECACFD987B49E2ABF80DF24D8B9C188569127AA",
+    "matchesOriginal": true
+  },
+  {
+    "path": "ui\\index.html",
+    "sha256": "B143468A3AEF3EB0FFBE561D2ED2C238CB871A6A1F703693AFDE4364D20673C1",
+    "matchesOriginal": true
+  },
+  {
+    "path": "ui\\model.js",
+    "sha256": "C61705F1EE2BE36175BE66FCCFA75978402C15E408D84A27C84832ABD6F8F3E6",
+    "matchesOriginal": true
+  },
+  {
+    "path": "ui\\renderer.js",
+    "sha256": "71A62F32B059CCD3E3B167CAE63C7B1D6B29961C910B71FF69A9D77C5E6350A2",
+    "matchesOriginal": true
+  },
+  {
+    "path": "ui\\style.css",
+    "sha256": "F916DA4267E26D57C60B512325BB06E081251FEEAE7191E66D4B686C44975B6C",
+    "matchesOriginal": true
+  }
+]

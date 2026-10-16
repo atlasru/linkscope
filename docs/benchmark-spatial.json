@@ -1,0 +1,45 @@
+{
+  "timestamp": "2026-10-16T09:19:12.853Z",
+  "runtime": "v24.18.1",
+  "platform": "win32/x64",
+  "dataset": {
+    "nodes": 100000,
+    "edges": 500000,
+    "seed": "lattice-24px-80%-local-20%-lcg-long",
+    "viewportWorldUnits": [
+      1000,
+      700
+    ],
+    "samples": 50
+  },
+  "nodeBuildMs": 159.7396,
+  "edgeBuildMs": 2245.8532999999998,
+  "nodeQuery": {
+    "medianMs": 0.1014999999997599,
+    "p95Ms": 1.7079000000003361,
+    "meanResults": 1129.48
+  },
+  "edgeQueryUnbounded": {
+    "medianMs": 29.865200000000186,
+    "p95Ms": 64.84280000000035,
+    "meanResults": 23954.88
+  },
+  "edgeQueryLod7000": {
+    "medianMs": 17.05919999999969,
+    "p95Ms": 30.195600000000923,
+    "meanResults": 6700.08
+  },
+  "move1000NodesMs": 7.192800000000716,
+  "memory": {
+    "rss": 511188992,
+    "heapTotal": 440795136,
+    "heapUsed": 365490392,
+    "external": 2701777,
+    "arrayBuffers": 209823
+  },
+  "caveats": [
+    "CPU spatial indexes only; excludes graph records, IPC, renderer, WebView GPU and worker layout.",
+    "Long-edge AABB queries return false positives; exact curve picking has additional cost.",
+    "Heap includes benchmark temporary allocations and has not been forced through garbage collection."
+  ]
+}

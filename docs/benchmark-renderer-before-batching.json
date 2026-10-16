@@ -1,0 +1,166 @@
+{
+  "timestamp": "2026-10-16T09:23:48.452Z",
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36 Edg/155.0.0.0",
+  "viewport": [
+    1280,
+    800
+  ],
+  "devicePixelRatio": 1,
+  "dataset": {
+    "nodes": 100000,
+    "edges": 500000,
+    "seed": "lattice-24px-80%-local-20%-lcg-long"
+  },
+  "recordsMs": 1180.8000000002794,
+  "setDataMs": 14649.599999999627,
+  "overview": {
+    "visibleNodes": 100000,
+    "drawnNodes": 20000,
+    "drawnEdges": 1500,
+    "frameMs": 277.79999999981374
+  },
+  "normalZoom": {
+    "samples": 20,
+    "medianFrameMs": 69.6999999997206,
+    "p95FrameMs": 138.8000000002794,
+    "counts": [
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 1925,
+        "drawnEdges": 6719,
+        "frameMs": 92
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 1925,
+        "drawnEdges": 6800,
+        "frameMs": 60.6999999997206
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 1925,
+        "drawnEdges": 6830,
+        "frameMs": 94.39999999990687
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 1925,
+        "drawnEdges": 6862,
+        "frameMs": 117.89999999990687
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 1925,
+        "drawnEdges": 6826,
+        "frameMs": 69.6999999997206
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 1925,
+        "drawnEdges": 6779,
+        "frameMs": 78.39999999990687
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 1925,
+        "drawnEdges": 6846,
+        "frameMs": 91.1999999997206
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 1925,
+        "drawnEdges": 6857,
+        "frameMs": 70.89999999990687
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 1925,
+        "drawnEdges": 6887,
+        "frameMs": 51.200000000186265
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 1925,
+        "drawnEdges": 6856,
+        "frameMs": 46
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 1925,
+        "drawnEdges": 6759,
+        "frameMs": 52
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 1925,
+        "drawnEdges": 6840,
+        "frameMs": 54.89999999990687
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 1925,
+        "drawnEdges": 6869,
+        "frameMs": 65.6999999997206
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 1925,
+        "drawnEdges": 6855,
+        "frameMs": 48.1999999997206
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 1925,
+        "drawnEdges": 6851,
+        "frameMs": 72.20000000018626
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 1925,
+        "drawnEdges": 6755,
+        "frameMs": 53.60000000009313
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 1925,
+        "drawnEdges": 6828,
+        "frameMs": 39.700000000186265
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 1925,
+        "drawnEdges": 6831,
+        "frameMs": 89.5
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 1925,
+        "drawnEdges": 6856,
+        "frameMs": 52.89999999990687
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 1925,
+        "drawnEdges": 6814,
+        "frameMs": 138.8000000002794
+      }
+    ]
+  },
+  "workerLayout": {
+    "elapsedMs": 33751.299999999814,
+    "returnedNodes": 100000,
+    "finite": true,
+    "iterations": 60
+  },
+  "caveats": [
+    "Headless installed Edge, not the native Tauri WebView2 host.",
+    "Demand-driven frame duration includes CPU drawing submission but not guaranteed GPU presentation.",
+    "Edge and node LOD is active; full simultaneous graph rendering is not claimed.",
+    "setData is synchronous; target-size project opening still blocks the renderer during indexing.",
+    "Layout results measured but not applied to the graph during this benchmark."
+  ],
+  "screenshots": [
+    "docs/benchmark-renderer-viewport.png",
+    "docs/benchmark-renderer-overview.png"
+  ]
+}

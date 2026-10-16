@@ -1,42 +1,11 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "LinkScope",
-  "version": "0.1.0",
-  "identifier": "local.linkscope.desktop",
-  "build": {
-    "frontendDist": "../ui"
-  },
+  "productName": "LinkScope 2", "version": "2.0.0", "identifier": "local.linkscope.v2",
+  "build": {"beforeDevCommand":"npm run dev","beforeBuildCommand":"npm run build","devUrl":"http://127.0.0.1:1420","frontendDist":"../dist"},
   "app": {
     "withGlobalTauri": true,
-    "windows": [
-      {
-        "title": "LinkScope \u2014 Local Intelligence",
-        "width": 1440,
-        "height": 940,
-        "minWidth": 1024,
-        "minHeight": 680
-      }
-    ],
-    "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src ipc: http://ipc.localhost; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'"
-    }
+    "windows": [{"label":"main","title":"LinkScope","width":1440,"height":920,"minWidth":850,"minHeight":580,"backgroundColor":"#181a1e"}],
+    "security": {"csp":"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src ipc: http://ipc.localhost; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'"}
   },
-  "bundle": {
-    "active": true,
-    "targets": "all",
-    "shortDescription": "Local-first OSINT graph workbench",
-    "category": "DeveloperTool",
-    "macOS": {
-      "minimumSystemVersion": "12.0"
-    },
-    "windows": {
-      "webviewInstallMode": {
-        "type": "skip"
-      }
-    },
-    "icon": [
-      "icons/icon.png",
-      "icons/icon.ico"
-    ]
-  }
+  "bundle": {"active":false,"icon":["icons/icon.ico","icons/icon.png"]}
 }

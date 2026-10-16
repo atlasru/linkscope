@@ -1,0 +1,260 @@
+{
+  "timestamp": "2026-10-16T11:46:55.235Z",
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36 Edg/155.0.0.0",
+  "viewport": [
+    1280,
+    800
+  ],
+  "devicePixelRatio": 1,
+  "dataset": {
+    "nodes": 100000,
+    "edges": 500000,
+    "seed": "lattice-24px-80%-local-20%-lcg-long"
+  },
+  "recordsMs": 619.4000000003725,
+  "setDataMs": 11603.800000000745,
+  "firstOverviewFrame": {
+    "visibleNodes": 100000,
+    "drawnNodes": 20000,
+    "drawnEdges": 1500,
+    "drawnLabels": 0,
+    "nodeBudget": 20000,
+    "edgeBudget": 1500,
+    "frameMs": 85.20000000111759,
+    "pendingFrame": true
+  },
+  "overview": {
+    "visibleNodes": 100000,
+    "drawnNodes": 1000,
+    "drawnEdges": 250,
+    "drawnLabels": 0,
+    "nodeBudget": 1000,
+    "edgeBudget": 250,
+    "frameMs": 66.69999999925494,
+    "pendingFrame": false
+  },
+  "normalZoom": {
+    "samples": 20,
+    "medianFrameMs": 15.600000001490116,
+    "p95FrameMs": 19.300000000745058,
+    "counts": [
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 963,
+        "drawnEdges": 247,
+        "drawnLabels": 201,
+        "nodeBudget": 1000,
+        "edgeBudget": 250,
+        "frameMs": 18.5,
+        "pendingFrame": false
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 963,
+        "drawnEdges": 243,
+        "drawnLabels": 201,
+        "nodeBudget": 1000,
+        "edgeBudget": 250,
+        "frameMs": 13.699999999254942,
+        "pendingFrame": false
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 963,
+        "drawnEdges": 245,
+        "drawnLabels": 201,
+        "nodeBudget": 1000,
+        "edgeBudget": 250,
+        "frameMs": 16.399999998509884,
+        "pendingFrame": false
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 963,
+        "drawnEdges": 244,
+        "drawnLabels": 201,
+        "nodeBudget": 1000,
+        "edgeBudget": 250,
+        "frameMs": 15.100000001490116,
+        "pendingFrame": false
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 963,
+        "drawnEdges": 246,
+        "drawnLabels": 201,
+        "nodeBudget": 1000,
+        "edgeBudget": 250,
+        "frameMs": 17.799999998882413,
+        "pendingFrame": false
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 963,
+        "drawnEdges": 246,
+        "drawnLabels": 201,
+        "nodeBudget": 1000,
+        "edgeBudget": 250,
+        "frameMs": 15.599999999627471,
+        "pendingFrame": false
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 963,
+        "drawnEdges": 244,
+        "drawnLabels": 201,
+        "nodeBudget": 1000,
+        "edgeBudget": 250,
+        "frameMs": 15.600000001490116,
+        "pendingFrame": false
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 963,
+        "drawnEdges": 245,
+        "drawnLabels": 201,
+        "nodeBudget": 1000,
+        "edgeBudget": 250,
+        "frameMs": 15.5,
+        "pendingFrame": false
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 963,
+        "drawnEdges": 246,
+        "drawnLabels": 201,
+        "nodeBudget": 1000,
+        "edgeBudget": 250,
+        "frameMs": 17.90000000037253,
+        "pendingFrame": false
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 963,
+        "drawnEdges": 248,
+        "drawnLabels": 201,
+        "nodeBudget": 1000,
+        "edgeBudget": 250,
+        "frameMs": 14,
+        "pendingFrame": false
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 963,
+        "drawnEdges": 246,
+        "drawnLabels": 201,
+        "nodeBudget": 1000,
+        "edgeBudget": 250,
+        "frameMs": 17,
+        "pendingFrame": false
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 963,
+        "drawnEdges": 243,
+        "drawnLabels": 201,
+        "nodeBudget": 1000,
+        "edgeBudget": 250,
+        "frameMs": 18,
+        "pendingFrame": false
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 963,
+        "drawnEdges": 245,
+        "drawnLabels": 201,
+        "nodeBudget": 1000,
+        "edgeBudget": 250,
+        "frameMs": 19.300000000745058,
+        "pendingFrame": false
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 963,
+        "drawnEdges": 246,
+        "drawnLabels": 201,
+        "nodeBudget": 1000,
+        "edgeBudget": 250,
+        "frameMs": 17.59999999962747,
+        "pendingFrame": false
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 963,
+        "drawnEdges": 246,
+        "drawnLabels": 201,
+        "nodeBudget": 1000,
+        "edgeBudget": 250,
+        "frameMs": 15.200000001117587,
+        "pendingFrame": false
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 963,
+        "drawnEdges": 247,
+        "drawnLabels": 201,
+        "nodeBudget": 1000,
+        "edgeBudget": 250,
+        "frameMs": 14,
+        "pendingFrame": false
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 963,
+        "drawnEdges": 244,
+        "drawnLabels": 201,
+        "nodeBudget": 1000,
+        "edgeBudget": 250,
+        "frameMs": 14,
+        "pendingFrame": false
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 963,
+        "drawnEdges": 247,
+        "drawnLabels": 201,
+        "nodeBudget": 1000,
+        "edgeBudget": 250,
+        "frameMs": 14.599999999627471,
+        "pendingFrame": false
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 963,
+        "drawnEdges": 247,
+        "drawnLabels": 201,
+        "nodeBudget": 1000,
+        "edgeBudget": 250,
+        "frameMs": 15.599999999627471,
+        "pendingFrame": false
+      },
+      {
+        "visibleNodes": 1925,
+        "drawnNodes": 963,
+        "drawnEdges": 246,
+        "drawnLabels": 201,
+        "nodeBudget": 1000,
+        "edgeBudget": 250,
+        "frameMs": 16,
+        "pendingFrame": false
+      }
+    ]
+  },
+  "workerLayout": {
+    "elapsedMs": 13167.300000000745,
+    "returnedNodes": 100000,
+    "finite": true,
+    "iterations": 60
+  },
+  "caveats": [
+    "Headless installed Edge, not the native Tauri WebView2 host.",
+    "Demand-driven frame duration includes CPU drawing submission but not guaranteed GPU presentation.",
+    "Adaptive edge/node LOD is active and samples settle before measurement; full simultaneous graph rendering is not claimed.",
+    "setData is synchronous; target-size project opening still blocks the renderer during indexing.",
+    "Layout results measured but not applied to the graph during this benchmark."
+  ],
+  "screenshots": [
+    "docs/benchmark-renderer-viewport.png",
+    "docs/benchmark-renderer-overview.png"
+  ]
+}

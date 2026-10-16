@@ -1,101 +1,833 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-use linkscope_core::{audit::Audit,engine::EngineHandle,model::*,network::{Network,NetworkConfig},transform::{self,Progress,Transform},vault::Vault};
-use serde::{Deserialize,Serialize};
-use std::{path::PathBuf,sync::Arc};
-use tauri::{Manager,State};
-use tokio::sync::{mpsc,Mutex};
+mod dialog;
+use anyhow::{bail, Context, Result};
+use linkscope_engine::{import, model::*, storage, Graph};
+use linkscope_transforms::Service;
+use serde::Serialize;
+use serde_json::{json, Value};
+use std::{
+    collections::HashMap,
+    fs::{File, OpenOptions},
+    path::{Path, PathBuf},
+    sync::{
+        atomic::{AtomicBool, AtomicU64, Ordering},
+        Arc, Mutex,
+    },
+};
+use tauri::{Manager, State};
 use tokio_util::sync::CancellationToken;
 
-#[derive(Clone,Serialize,Deserialize)]
-struct Config { memory_mb:usize, network:NetworkConfig }
-impl Default for Config {fn default()->Self{Self{memory_mb:512,network:NetworkConfig::default()}}}
-struct Job { rx:mpsc::Receiver<Progress>,cancel:CancellationToken }
+struct Session {
+    graph: Graph,
+    epoch: u64,
+    path: Option<PathBuf>,
+    recovery: Option<String>,
+    autosaved: Option<u64>,
+}
+struct Job {
+    cancel: CancellationToken,
+    result: Value,
+    sequence: u64,
+}
+static JOB_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 struct App {
-    engine:EngineHandle, network:Mutex<Arc<Network>>, config:Mutex<Config>,
-    transforms:Vec<Arc<dyn Transform>>, job:Mutex<Option<Job>>, vault:Mutex<Vault>,
-    config_dir:PathBuf,data_dir:PathBuf,ephemeral:bool,
+    session: Arc<Mutex<Session>>,
+    service: Arc<Service>,
+    jobs: Arc<Mutex<HashMap<String, Job>>>,
+    directory: PathBuf,
+    workspace: Arc<Mutex<Value>>,
+    closing: Arc<AtomicBool>,
+    _lock: File,
+    io: Arc<Mutex<()>>,
+    #[cfg(debug_assertions)]
+    smoke_path: Option<PathBuf>,
+    #[cfg(debug_assertions)]
+    smoke_restore: bool,
 }
-type Reply<T>=Result<T,String>;
-fn err(e:impl std::fmt::Display)->String{e.to_string()}
-#[tauri::command]
-async fn info(app:State<'_,App>)->Reply<serde_json::Value>{Ok(serde_json::json!({"ephemeral":app.ephemeral,"config":app.config.lock().await.clone(),"transforms":app.transforms.iter().map(|t|t.manifest()).collect::<Vec<_>>()}))}
-#[tauri::command]
-async fn add_node(kind:String,value:String,app:State<'_,App>)->Reply<Batch>{let n=Node::new(&kind,&value,"analyst");app.engine.call(move|e|e.apply(Batch{nodes:vec![n],edges:vec![]})).await.map_err(err)}
-#[tauri::command]
-async fn apply_batch(batch:Batch,app:State<'_,App>)->Reply<Batch>{app.engine.call(move|e|e.apply(batch)).await.map_err(err)}
-#[derive(Deserialize)]
-struct Position {id:String,x:f32,y:f32}
-#[tauri::command]
-async fn positions(positions:Vec<Position>,app:State<'_,App>)->Reply<()>{
-    if positions.len()>256{return Err("position batch exceeds 256 nodes".into())}
-    app.engine.call(move|e|{let mut batch=Batch::default();for p in positions{if !p.x.is_finite()||!p.y.is_finite(){anyhow::bail!("invalid coordinates")};if let Some(mut n)=e.store.node(&p.id)?{n.x=p.x;n.y=p.y;batch.nodes.push(n);}}e.graph.admit(&batch)?;e.store.commit(&batch)?;e.graph.apply(batch);Ok(())}).await.map_err(err)
+type Reply<T> = std::result::Result<T, String>;
+fn error(e: impl std::fmt::Display) -> String {
+    e.to_string()
+}
+async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T> + Send + 'static) -> Reply<T> {
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(error)?
+        .map_err(error)
+}
+fn snapshot(s: &Session, workspace: Value) -> Value {
+    json!({"project":s.graph.snapshot(),"revision":session_revision(s),"canUndo":s.graph.can_undo(),"canRedo":s.graph.can_redo(),"path":s.path,"recovery":s.recovery,"workspace":workspace})
+}
+fn session_revision(s: &Session) -> u64 {
+    s.epoch + s.graph.revision()
+}
+fn check_revision(s: &Session, revision: u64) -> Result<()> {
+    if session_revision(s) != revision {
+        bail!("Project changed. Reload the editor before retrying this edit.")
+    }
+    Ok(())
+}
+fn ensure_editable(closing: &AtomicBool) -> Result<()> {
+    if closing.load(Ordering::SeqCst) {
+        bail!("The window is saving before closing")
+    }
+    Ok(())
+}
+fn archive(s: &Session, dir: &std::path::Path) -> Result<()> {
+    let p = s.graph.snapshot();
+    if p.entities.is_empty()
+        && p.relationships.is_empty()
+        && p.collections.is_empty()
+        && p.metadata.is_empty()
+        && p.title == "Untitled"
+    {
+        return Ok(());
+    }
+    // Preserve unsaved work when switching projects. These are user-recoverable portable files.
+    let folder = dir.join("recoveries");
+    std::fs::create_dir_all(&folder)?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_nanos();
+    storage::save(&folder.join(format!("{stamp}.linkscope")), &p)
+}
+fn install_project(
+    s: &mut Session,
+    graph: Graph,
+    path: Option<PathBuf>,
+    recovery: Option<String>,
+    directory: &Path,
+) -> Result<()> {
+    let epoch = session_revision(s)
+        .checked_add(1)
+        .context("Session revision exhausted")?;
+    archive(s, directory)?;
+    // Complete all fallible writes before replacing authoritative state.
+    storage::save(&directory.join("recovery.linkscope"), &graph.snapshot())?;
+    *s = Session {
+        graph,
+        epoch,
+        path,
+        recovery,
+        autosaved: Some(epoch),
+    };
+    Ok(())
+}
+fn recovery_family(path: &Path) -> [PathBuf; 3] {
+    let sidecar = |suffix: &str| {
+        let mut value = path.as_os_str().to_owned();
+        value.push(suffix);
+        PathBuf::from(value)
+    };
+    [path.to_path_buf(), sidecar(".pending"), sidecar(".bak")]
+}
+fn quarantine_recovery(path: &Path) -> Result<PathBuf> {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_nanos();
+    let folder = path
+        .parent()
+        .context("Recovery has no directory")?
+        .join("recoveries")
+        .join(format!("corrupt-{stamp}"));
+    std::fs::create_dir_all(&folder)?;
+    for original in recovery_family(path) {
+        if original.exists() {
+            let destination =
+                folder.join(original.file_name().context("Recovery filename missing")?);
+            std::fs::rename(&original, &destination).with_context(|| {
+                format!(
+                    "Preserve {} in {}; earlier files may already be there",
+                    original.display(),
+                    folder.display()
+                )
+            })?;
+        }
+    }
+    Ok(folder)
+}
+fn open_recovery(path: &Path) -> Result<(Graph, Option<String>)> {
+    if !recovery_family(path).iter().any(|p| p.exists()) {
+        return Ok((Graph::empty(), None));
+    }
+    match storage::load(path) {
+        Ok(loaded) => {
+            let graph = Graph::new(loaded.project)?;
+            if let Some(source) = loaded.recovered_from {
+                let preserved = quarantine_recovery(path)?;
+                storage::save(path, &graph.snapshot())?;
+                Ok((
+                    graph,
+                    Some(format!(
+                        "Recovered from {source}. Previous files preserved at {}",
+                        preserved.display()
+                    )),
+                ))
+            } else {
+                Ok((graph, None))
+            }
+        }
+        Err(error) => {
+            let preserved = quarantine_recovery(path)?;
+            let graph = Graph::empty();
+            storage::save(path, &graph.snapshot())?;
+            Ok((
+                graph,
+                Some(format!(
+                    "Autosave could not be opened: {error}. Original files preserved at {}",
+                    preserved.display()
+                )),
+            ))
+        }
+    }
+}
+fn persist_recovery(
+    session: &Mutex<Session>,
+    io: &Mutex<()>,
+    path: &Path,
+    force: bool,
+) -> Result<()> {
+    let _io = io.lock().map_err(error).map_err(anyhow::Error::msg)?;
+    let (project, revision) = {
+        let s = session.lock().map_err(error).map_err(anyhow::Error::msg)?;
+        let revision = session_revision(&s);
+        if !force && s.autosaved == Some(revision) {
+            return Ok(());
+        }
+        (s.graph.snapshot(), revision)
+    };
+    // No graph lock during serialization, flush, backup or atomic replacement.
+    storage::save(path, &project)?;
+    let mut s = session.lock().map_err(error).map_err(anyhow::Error::msg)?;
+    if session_revision(&s) == revision {
+        s.autosaved = Some(revision)
+    }
+    Ok(())
+}
+fn trim_jobs(jobs: &mut HashMap<String, Job>) {
+    while jobs
+        .values()
+        .filter(|job| job.result["status"] != "running")
+        .count()
+        > 32
+    {
+        let oldest = jobs
+            .iter()
+            .filter(|(_, job)| job.result["status"] != "running")
+            .min_by_key(|(_, job)| job.sequence)
+            .map(|(id, _)| id.clone());
+        if let Some(id) = oldest {
+            jobs.remove(&id);
+        } else {
+            break;
+        }
+    }
 }
 #[tauri::command]
-async fn page(table:String,after:i64,app:State<'_,App>)->Reply<serde_json::Value>{app.engine.call(move|e|{let rows=e.store.page(&table,after,512)?;let cursor=rows.last().map_or(after,|r|r.0);let items:Vec<serde_json::Value>=rows.into_iter().map(|(_,s)|serde_json::from_str(&s)).collect::<Result<_,_>>()?;Ok(serde_json::json!({"cursor":cursor,"items":items}))}).await.map_err(err)}
-#[tauri::command]
-async fn node(id:String,app:State<'_,App>)->Reply<Option<Node>>{app.engine.call(move|e|e.node(&id)).await.map_err(err)}
-#[tauri::command]
-async fn search(query:String,app:State<'_,App>)->Reply<Vec<String>>{if query.len()>512{return Err("query too long".into())}app.engine.call(move|e|e.search(&query)).await.map_err(err)}
-#[tauri::command]
-async fn stats(app:State<'_,App>)->Reply<linkscope_core::engine::Stats>{app.engine.call(|e|Ok(e.stats())).await.map_err(err)}
-#[tauri::command]
-async fn run_transforms(id:String,sources:Vec<String>,app:State<'_,App>)->Reply<usize>{
-    let input=app.engine.call(move|e|e.node(&id)).await.map_err(err)?.ok_or("node not found")?;
-    let list:Vec<_>=app.transforms.iter().filter(|t|t.manifest().input==input.kind&&sources.contains(&t.manifest().id)).cloned().collect();let total=list.len();if total==0{return Err("no compatible transforms selected".into())}
-    let mut job=app.job.lock().await;if let Some(old)=job.as_ref(){if !old.rx.is_closed(){return Err("another transform job is active".into())}}
-    let(tx,rx)=mpsc::channel(16);let cancel=CancellationToken::new();*job=Some(Job{rx,cancel:cancel.clone()});
-    tauri::async_runtime::spawn(transform::run_all(input,list,app.network.lock().await.clone(),app.engine.clone(),tx,cancel));Ok(total)
+async fn boot(app: State<'_, App>) -> Reply<Value> {
+    let s = app.session.clone();
+    let workspace = app.workspace.lock().map_err(error)?.clone();
+    blocking(move || {
+        let session = s.lock().map_err(error).map_err(anyhow::Error::msg)?;
+        Ok(snapshot(&session, workspace))
+    })
+    .await
 }
 #[tauri::command]
-async fn poll_job(app:State<'_,App>)->Reply<Vec<Progress>>{let mut guard=app.job.lock().await;let mut out=Vec::new();if let Some(job)=guard.as_mut(){for _ in 0..4{match job.rx.try_recv(){Ok(p)=>out.push(p),Err(_)=>break}}}Ok(out)}
-#[tauri::command]
-async fn cancel_job(app:State<'_,App>)->Reply<()>{if let Some(job)=app.job.lock().await.as_ref(){job.cancel.cancel()}Ok(())}
-#[tauri::command]
-async fn configure(config:Config,app:State<'_,App>)->Reply<()>{
-    if !(256..=4096).contains(&config.memory_mb){return Err("memory budget must be 256–4096 MiB".into())}
-    if app.job.lock().await.as_ref().is_some_and(|j|!j.rx.is_closed()){return Err("cancel and drain the active job before changing routing".into())}
-    let net=Network::new(config.network.clone(),app.engine.clone()).map_err(err)?;
-    if !app.ephemeral{let path=app.config_dir.join("config.json");let data=serde_json::to_vec_pretty(&config).map_err(err)?;tauri::async_runtime::spawn_blocking(move||std::fs::write(path,data)).await.map_err(err)?.map_err(err)?;}
-    *app.config.lock().await=config;*app.network.lock().await=Arc::new(net);Ok(())
+async fn apply_patch(patch: Patch, revision: u64, app: State<'_, App>) -> Reply<Delta> {
+    let s = app.session.clone();
+    let closing = app.closing.clone();
+    blocking(move || {
+        let mut s = s.lock().map_err(error).map_err(anyhow::Error::msg)?;
+        ensure_editable(&closing)?;
+        check_revision(&s, revision)?;
+        let mut delta = s.graph.apply(patch)?;
+        delta.revision += s.epoch;
+        Ok(delta)
+    })
+    .await
 }
 #[tauri::command]
-async fn export_graph(format:String,app:State<'_,App>)->Reply<String>{
-    if !["json","graphml","stix","misp"].contains(&format.as_str()){return Err("unsupported format".into())}
-    let directory=app.data_dir.join("exports");let suffix=if format=="graphml"{"graphml"}else{"json"};let path=directory.join(format!("investigation-{}-{}.{}",now(),format,suffix));let display=path.to_string_lossy().to_string();
-    app.engine.call(move|e|{std::fs::create_dir_all(directory)?;let file=std::fs::OpenOptions::new().write(true).create_new(true).open(&path)?;let mut writer=std::io::BufWriter::new(file);let result=linkscope_core::export::write(&e.store,&format,&mut writer);use std::io::Write;writer.flush()?;if result.is_err(){drop(writer);let _=std::fs::remove_file(&path);}result}).await.map_err(err)?;Ok(display)
+async fn undo(revision: u64, app: State<'_, App>) -> Reply<Delta> {
+    let s = app.session.clone();
+    let closing = app.closing.clone();
+    blocking(move || {
+        let mut s = s.lock().map_err(error).map_err(anyhow::Error::msg)?;
+        ensure_editable(&closing)?;
+        check_revision(&s, revision)?;
+        let mut delta = s.graph.undo()?;
+        delta.revision += s.epoch;
+        Ok(delta)
+    })
+    .await
 }
 #[tauri::command]
-async fn vault_save(source:String,key:String,passphrase:String,app:State<'_,App>)->Reply<()>{
-    if app.ephemeral{return Err("vault persistence is disabled in ephemeral mode".into())}
-    if source.len()>64||key.len()>4096{return Err("invalid key size".into())}
-    let path=app.data_dir.join("keys.age");let mut guard=app.vault.lock().await;let mut vault=std::mem::take(&mut *guard);
-    let result=tauri::async_runtime::spawn_blocking(move||{
-        let pass=zeroize::Zeroizing::new(passphrase);
-        let r=(||->anyhow::Result<()>{if path.exists(){vault.unlock(&path,zeroize::Zeroizing::new(pass.to_string()))?;}vault.set(source,key);vault.save(&path,pass)})();(vault,r)
-    }).await.map_err(err)?;
-    *guard=result.0;result.1.map_err(err)
+async fn redo(revision: u64, app: State<'_, App>) -> Reply<Delta> {
+    let s = app.session.clone();
+    let closing = app.closing.clone();
+    blocking(move || {
+        let mut s = s.lock().map_err(error).map_err(anyhow::Error::msg)?;
+        ensure_editable(&closing)?;
+        check_revision(&s, revision)?;
+        let mut delta = s.graph.redo()?;
+        delta.revision += s.epoch;
+        Ok(delta)
+    })
+    .await
+}
+fn cancel_jobs(app: &App) {
+    if let Ok(jobs) = app.jobs.lock() {
+        for job in jobs.values() {
+            job.cancel.cancel();
+        }
+    }
 }
 #[tauri::command]
-async fn vault_unlock(passphrase:String,app:State<'_,App>)->Reply<()>{let path=app.data_dir.join("keys.age");let (v,r)=tauri::async_runtime::spawn_blocking(move||{let mut v=Vault::default();let r=v.unlock(&path,zeroize::Zeroizing::new(passphrase));(v,r)}).await.map_err(err)?;r.map_err(err)?;*app.vault.lock().await=v;Ok(())}
+async fn new_project(app: State<'_, App>) -> Reply<Value> {
+    cancel_jobs(&app);
+    let s = app.session.clone();
+    let dir = app.directory.clone();
+    let w = app.workspace.lock().map_err(error)?.clone();
+    let io = app.io.clone();
+    let closing = app.closing.clone();
+    blocking(move || {
+        let _io = io.lock().map_err(error).map_err(anyhow::Error::msg)?;
+        let mut s = s.lock().map_err(error).map_err(anyhow::Error::msg)?;
+        ensure_editable(&closing)?;
+        install_project(&mut s, Graph::empty(), None, None, &dir)?;
+        Ok(snapshot(&s, w))
+    })
+    .await
+}
 #[tauri::command]
-async fn vault_lock(app:State<'_,App>)->Reply<()>{app.vault.lock().await.lock();Ok(())}
-
-fn main(){
-    let ephemeral=std::env::args().any(|a|a=="--ephemeral");
-    tauri::Builder::default().setup(move|app|{
-        let home=app.path().home_dir()?;
-        let config_dir=home.join(".config/linkscope");let data_dir=home.join(".local/share/linkscope");
-        let config=if ephemeral{Config::default()}else{
-            std::fs::create_dir_all(&config_dir)?;std::fs::create_dir_all(&data_dir)?;
-            #[cfg(unix)]{use std::os::unix::fs::PermissionsExt;for p in [&config_dir,&data_dir]{std::fs::set_permissions(p,std::fs::Permissions::from_mode(0o700))?;}}
-            let p=config_dir.join("config.json");if p.exists(){serde_json::from_slice(&std::fs::read(p)?)?}else{let c=Config::default();std::fs::write(p,serde_json::to_vec_pretty(&c)?)?;c}
+async fn open_project(app: State<'_, App>) -> Reply<Option<Value>> {
+    let chosen = blocking(|| dialog::choose(false, false)).await?;
+    let Some(path) = chosen else { return Ok(None) };
+    cancel_jobs(&app);
+    let s = app.session.clone();
+    let dir = app.directory.clone();
+    let w = app.workspace.lock().map_err(error)?.clone();
+    let io = app.io.clone();
+    let closing = app.closing.clone();
+    blocking(move || {
+        let loaded = storage::load(&path)?;
+        let graph = Graph::new(loaded.project)?;
+        let _io = io.lock().map_err(error).map_err(anyhow::Error::msg)?;
+        let mut s = s.lock().map_err(error).map_err(anyhow::Error::msg)?;
+        ensure_editable(&closing)?;
+        install_project(&mut s, graph, Some(path), loaded.recovered_from, &dir)?;
+        Ok(Some(snapshot(&s, w)))
+    })
+    .await
+}
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Saved {
+    path: String,
+    revision: u64,
+}
+#[tauri::command]
+async fn save_project(save_as: bool, app: State<'_, App>) -> Reply<Option<Saved>> {
+    let (current, epoch) = {
+        let s = app.session.lock().map_err(error)?;
+        (s.path.clone(), s.epoch)
+    };
+    let path = if save_as || current.is_none() {
+        blocking(|| dialog::choose(true, false)).await?
+    } else {
+        current
+    };
+    let Some(path) = path else { return Ok(None) };
+    let s = app.session.clone();
+    let io = app.io.clone();
+    let closing = app.closing.clone();
+    blocking(move || {
+        let _io = io.lock().map_err(error).map_err(anyhow::Error::msg)?;
+        let (project, revision) = {
+            let s = s.lock().map_err(error).map_err(anyhow::Error::msg)?;
+            ensure_editable(&closing)?;
+            if s.epoch != epoch {
+                bail!("Project changed while choosing a save location")
+            }
+            (s.graph.snapshot(), session_revision(&s))
         };
-        if !(256..=4096).contains(&config.memory_mb){return Err("memory budget must be 256–4096 MiB".into());}
-        let engine=tauri::async_runtime::block_on(EngineHandle::start(if ephemeral{None}else{Some(data_dir.clone())},config.memory_mb*1024*1024/3))?;
-        let plugins_dir=config_dir.join("plugins");
-        let transforms=transform::load_plugins(if ephemeral{None}else{Some(plugins_dir.as_path())})?;
-        let network=Arc::new(Network::new(config.network.clone(),engine.clone())?);
-        Audit::new(if ephemeral{None}else{Some(data_dir.join("logs"))}).record("session_start",0)?;
-        app.manage(App{engine,network:Mutex::new(network),config:Mutex::new(config),transforms,job:Mutex::new(None),vault:Mutex::new(Vault::default()),config_dir,data_dir,ephemeral});Ok(())
-    }).invoke_handler(tauri::generate_handler![info,add_node,apply_batch,positions,page,node,search,stats,run_transforms,poll_job,cancel_job,configure,export_graph,vault_save,vault_unlock,vault_lock]).run(tauri::generate_context!()).expect("LinkScope startup failed");
+        storage::save(&path, &project)?;
+        let mut s = s.lock().map_err(error).map_err(anyhow::Error::msg)?;
+        s.path = Some(path.clone());
+        s.recovery = None;
+        Ok(Some(Saved {
+            path: path.to_string_lossy().into(),
+            revision,
+        }))
+    })
+    .await
+}
+#[tauri::command]
+async fn rename_project(title: String, app: State<'_, App>) -> Reply<u64> {
+    let s = app.session.clone();
+    let closing = app.closing.clone();
+    blocking(move || {
+        let mut s = s.lock().map_err(error).map_err(anyhow::Error::msg)?;
+        ensure_editable(&closing)?;
+        s.graph.set_title(title)?;
+        Ok(session_revision(&s))
+    })
+    .await
+}
+#[tauri::command]
+async fn preview_import(
+    text: String,
+    format: String,
+    name: String,
+) -> Reply<import::ImportPreview> {
+    blocking(move || import::preview(&text, &format, &name)).await
+}
+#[tauri::command]
+async fn pick_import() -> Reply<Option<Value>> {
+    blocking(|| {
+        let Some(path) = dialog::choose(false, true)? else {
+            return Ok(None);
+        };
+        if std::fs::metadata(&path)?.len() > 32 * 1024 * 1024 {
+            bail!("Import is larger than 32 MiB. Split the dataset before importing.")
+        }
+        let format = path.extension().and_then(|s| s.to_str()).unwrap_or("txt");
+        let name = path.file_name().unwrap_or_default().to_string_lossy();
+        let preview = import::preview(
+            &std::fs::read_to_string(&path).context("Import must be UTF-8 text")?,
+            format,
+            &name,
+        )?;
+        Ok(Some(
+            json!({"patch":preview.patch,"warnings":preview.warnings,"name":name}),
+        ))
+    })
+    .await
+}
+#[tauri::command]
+async fn save_workspace(workspace: Value, app: State<'_, App>) -> Reply<()> {
+    if serde_json::to_vec(&workspace).map_err(error)?.len() > 8192 {
+        return Err("Workspace settings are too large".into());
+    }
+    *app.workspace.lock().map_err(error)? = workspace;
+    let path = app.directory.join("workspace.json");
+    let current = app.workspace.clone();
+    let io = app.io.clone();
+    blocking(move || {
+        use std::io::Write;
+        let _io = io.lock().map_err(error).map_err(anyhow::Error::msg)?;
+        let workspace = current
+            .lock()
+            .map_err(error)
+            .map_err(anyhow::Error::msg)?
+            .clone();
+        let mut file = tempfile::NamedTempFile::new_in(path.parent().unwrap())?;
+        serde_json::to_writer(&mut file, &workspace)?;
+        file.flush()?;
+        file.as_file().sync_all()?;
+        file.persist(path).map_err(|e| e.error)?;
+        Ok(())
+    })
+    .await
+}
+#[tauri::command]
+fn manifests() -> Vec<linkscope_transforms::Manifest> {
+    Service::manifests()
+}
+#[tauri::command]
+async fn start_transform(kind: String, id: String, app: State<'_, App>) -> Reply<String> {
+    let entity = app
+        .session
+        .lock()
+        .map_err(error)?
+        .graph
+        .entity(&id)
+        .cloned()
+        .ok_or("Entity no longer exists")?;
+    let mut jobs = app.jobs.lock().map_err(error)?;
+    if jobs
+        .values()
+        .filter(|j| j.result["status"] == "running")
+        .count()
+        >= 4
+    {
+        return Err("Four research jobs are already queued. Wait or cancel one.".into());
+    }
+    trim_jobs(&mut jobs);
+    let sequence = JOB_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let job_id = format!("job-{sequence}");
+    let cancel = CancellationToken::new();
+    jobs.insert(
+        job_id.clone(),
+        Job {
+            cancel: cancel.clone(),
+            result: json!({"id":job_id,"status":"running"}),
+            sequence,
+        },
+    );
+    drop(jobs);
+    let service = app.service.clone();
+    let jobs = app.jobs.clone();
+    let output_id = job_id.clone();
+    tauri::async_runtime::spawn(async move {
+        let result = service.run(&kind, &entity, cancel.clone()).await;
+        let value = if cancel.is_cancelled() {
+            json!({"id":output_id,"status":"cancelled"})
+        } else {
+            match result {
+                Ok(output) => json!({"id":output_id,"status":"complete","output":output}),
+                Err(e) => json!({"id":output_id,"status":"failed","error":e.to_string()}),
+            }
+        };
+        if let Ok(mut jobs) = jobs.lock() {
+            if let Some(job) = jobs.get_mut(&output_id) {
+                job.result = value;
+            }
+            trim_jobs(&mut jobs);
+        }
+    });
+    Ok(job_id)
+}
+#[tauri::command]
+fn poll_transform(id: String, app: State<'_, App>) -> Reply<Value> {
+    app.jobs
+        .lock()
+        .map_err(error)?
+        .get(&id)
+        .map(|j| j.result.clone())
+        .ok_or("Job is no longer available".into())
+}
+#[tauri::command]
+fn cancel_transform(id: String, app: State<'_, App>) -> Reply<()> {
+    if let Some(j) = app.jobs.lock().map_err(error)?.get(&id) {
+        j.cancel.cancel();
+    }
+    Ok(())
+}
+#[cfg(debug_assertions)]
+#[tauri::command]
+fn smoke_result(result: Value, app: State<'_, App>) -> Reply<()> {
+    let Some(path) = &app.smoke_path else {
+        return Err("Desktop smoke runner is disabled".into());
+    };
+    std::fs::write(path, serde_json::to_vec_pretty(&result).map_err(error)?).map_err(error)
+}
+#[cfg(debug_assertions)]
+#[tauri::command]
+fn smoke_ready(window: tauri::WebviewWindow, app: State<'_, App>) -> Reply<()> {
+    if app.smoke_path.is_some() {
+        window
+            .eval(if app.smoke_restore {
+                "window.dispatchEvent(new CustomEvent('linkscope-smoke',{detail:{restore:true}}))"
+            } else {
+                "window.dispatchEvent(new Event('linkscope-smoke'))"
+            })
+            .map_err(error)?;
+    }
+    Ok(())
+}
+
+fn main() {
+    let args: Vec<_> = std::env::args().collect();
+    let data_override = args
+        .windows(2)
+        .find(|w| w[0] == "--data-dir")
+        .map(|w| PathBuf::from(&w[1]));
+    #[cfg(debug_assertions)]
+    let smoke_path = args
+        .windows(2)
+        .find(|w| w[0] == "--smoke-test")
+        .map(|w| PathBuf::from(&w[1]));
+    #[cfg(debug_assertions)]
+    let smoke_restore = args.iter().any(|arg| arg == "--smoke-restore");
+    let builder = tauri::Builder::default()
+        .setup(move |app| {
+            let directory = data_override.unwrap_or(app.path().app_data_dir()?);
+            std::fs::create_dir_all(&directory)?;
+            let lock = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(directory.join("session.lock"))?;
+            fs2::FileExt::try_lock_exclusive(&lock)
+                .context("Another LinkScope window is using this workspace")?;
+            let recovery = directory.join("recovery.linkscope");
+            let (graph, message) = open_recovery(&recovery)?;
+            let workspace = std::fs::read(directory.join("workspace.json"))
+                .ok()
+                .and_then(|b| serde_json::from_slice(&b).ok())
+                .unwrap_or(json!({}));
+            let session = Arc::new(Mutex::new(Session {
+                graph,
+                epoch: 0,
+                path: None,
+                recovery: message,
+                autosaved: Some(0),
+            }));
+            let jobs = Arc::new(Mutex::new(HashMap::new()));
+            let io = Arc::new(Mutex::new(()));
+            app.manage(App {
+                session: session.clone(),
+                service: Arc::new(Service::new()?),
+                jobs,
+                directory: directory.clone(),
+                workspace: Arc::new(Mutex::new(workspace)),
+                closing: Arc::new(AtomicBool::new(false)),
+                io: io.clone(),
+                _lock: lock,
+                #[cfg(debug_assertions)]
+                smoke_path,
+                #[cfg(debug_assertions)]
+                smoke_restore,
+            });
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                    let s = session.clone();
+                    let path = directory.join("recovery.linkscope");
+                    let io = io.clone();
+                    let result = tauri::async_runtime::spawn_blocking(move || {
+                        persist_recovery(&s, &io, &path, false)
+                    })
+                    .await;
+                    let problem = match result {
+                        Ok(Ok(())) => None,
+                        Ok(Err(e)) => Some(e.to_string()),
+                        Err(e) => Some(e.to_string()),
+                    };
+                    if let Some(problem) = problem {
+                        use tauri::Emitter;
+                        let _ = handle.emit("autosave-error", problem);
+                    }
+                }
+            });
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let state = window.state::<App>();
+                if state.closing.swap(true, Ordering::SeqCst) {
+                    return;
+                }
+                cancel_jobs(&state);
+                let s = state.session.clone();
+                let path = state.directory.join("recovery.linkscope");
+                let closing = state.closing.clone();
+                let handle = window.app_handle().clone();
+                let io = state.io.clone();
+                tauri::async_runtime::spawn(async move {
+                    let result = blocking(move || persist_recovery(&s, &io, &path, true)).await;
+                    match result {
+                        Ok(()) => handle.exit(0),
+                        Err(e) => {
+                            closing.store(false, Ordering::SeqCst);
+                            use tauri::Emitter;
+                            let _ = handle.emit(
+                                "autosave-error",
+                                format!("Could not save before closing: {e}"),
+                            );
+                        }
+                    }
+                });
+            }
+        });
+    #[cfg(debug_assertions)]
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        boot,
+        apply_patch,
+        undo,
+        redo,
+        new_project,
+        open_project,
+        save_project,
+        rename_project,
+        preview_import,
+        pick_import,
+        save_workspace,
+        manifests,
+        start_transform,
+        poll_transform,
+        cancel_transform,
+        smoke_result,
+        smoke_ready
+    ]);
+    #[cfg(not(debug_assertions))]
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        boot,
+        apply_patch,
+        undo,
+        redo,
+        new_project,
+        open_project,
+        save_project,
+        rename_project,
+        preview_import,
+        pick_import,
+        save_workspace,
+        manifests,
+        start_transform,
+        poll_transform,
+        cancel_transform
+    ]);
+    builder
+        .run(tauri::generate_context!())
+        .expect("LinkScope could not start");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn session() -> Session {
+        Session {
+            graph: Graph::empty(),
+            epoch: 0,
+            path: None,
+            recovery: None,
+            autosaved: Some(0),
+        }
+    }
+
+    #[test]
+    fn project_switch_invalidates_old_revisions_even_for_empty_graphs() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut session = session();
+        let original = session_revision(&session);
+        install_project(&mut session, Graph::empty(), None, None, directory.path()).unwrap();
+        assert!(check_revision(&session, original).is_err());
+        assert_eq!(session_revision(&session), original + 1);
+        let delta = session
+            .graph
+            .apply(Patch {
+                entities: vec![Entity {
+                    id: "new".into(),
+                    ..Entity::default()
+                }],
+                ..Patch::default()
+            })
+            .unwrap();
+        assert_eq!(session.epoch + delta.revision, session_revision(&session));
+    }
+
+    #[test]
+    fn failed_recovery_save_does_not_replace_working_project() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut session = session();
+        session
+            .graph
+            .apply(Patch {
+                entities: vec![Entity {
+                    id: "retained".into(),
+                    ..Entity::default()
+                }],
+                ..Patch::default()
+            })
+            .unwrap();
+        std::fs::write(directory.path().join("recovery.linkscope"), "corrupt").unwrap();
+        assert!(
+            install_project(&mut session, Graph::empty(), None, None, directory.path()).is_err()
+        );
+        assert!(session.graph.entity("retained").is_some());
+        assert_eq!(session.epoch, 0);
+        assert_eq!(
+            std::fs::read(directory.path().join("recovery.linkscope")).unwrap(),
+            b"corrupt"
+        );
+    }
+
+    #[test]
+    fn corrupt_autosave_family_is_retained_before_fresh_recovery_is_created() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("recovery.linkscope");
+        for original in recovery_family(&path) {
+            std::fs::write(original, b"original corrupt bytes").unwrap();
+        }
+        let (graph, message) = open_recovery(&path).unwrap();
+        assert_eq!(graph.entity_count(), 0);
+        assert!(message.unwrap().contains("preserved at"));
+        assert!(storage::load(&path).is_ok());
+        let folders = std::fs::read_dir(directory.path().join("recoveries"))
+            .unwrap()
+            .collect::<std::io::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(folders.len(), 1);
+        let preserved = std::fs::read_dir(folders[0].path())
+            .unwrap()
+            .collect::<std::io::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(preserved.len(), 3);
+        for original in preserved {
+            assert_eq!(
+                std::fs::read(original.path()).unwrap(),
+                b"original corrupt bytes"
+            );
+        }
+    }
+
+    #[test]
+    fn valid_pending_autosave_is_recovered_and_preserved_with_bad_original() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("recovery.linkscope");
+        let project = Project {
+            title: "Recovered title".into(),
+            ..Project::default()
+        };
+        storage::save(&recovery_family(&path)[1], &project).unwrap();
+        std::fs::write(&path, b"bad original").unwrap();
+        let (graph, message) = open_recovery(&path).unwrap();
+        assert_eq!(graph.snapshot().title, "Recovered title");
+        assert!(message.unwrap().contains("Recovered from"));
+        assert_eq!(
+            storage::load(&path).unwrap().project.title,
+            "Recovered title"
+        );
+        assert!(!recovery_family(&path)[1].exists());
+    }
+
+    #[test]
+    fn completed_previews_survive_new_jobs_with_a_bounded_retention_window() {
+        let mut jobs = HashMap::new();
+        for sequence in 0..42 {
+            jobs.insert(
+                sequence.to_string(),
+                Job {
+                    cancel: CancellationToken::new(),
+                    sequence,
+                    result: json!({"status":if sequence>=40{"running"}else{"complete"}}),
+                },
+            );
+        }
+        trim_jobs(&mut jobs);
+        assert_eq!(jobs.len(), 34);
+        assert!(jobs.contains_key("40") && jobs.contains_key("41"));
+        assert!(!jobs.contains_key("0"));
+        assert!(jobs.contains_key("8"));
+    }
+
+    #[test]
+    fn autosave_marks_only_the_saved_revision() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("recovery.linkscope");
+        let mut session = session();
+        session
+            .graph
+            .apply(Patch {
+                entities: vec![Entity {
+                    id: "saved".into(),
+                    ..Entity::default()
+                }],
+                ..Patch::default()
+            })
+            .unwrap();
+        let session = Mutex::new(session);
+        let io = Mutex::new(());
+        persist_recovery(&session, &io, &path, false).unwrap();
+        let guard = session.lock().unwrap();
+        assert_eq!(guard.autosaved, Some(session_revision(&guard)));
+        drop(guard);
+        assert_eq!(storage::load(&path).unwrap().project.entities.len(), 1);
+        assert!(ensure_editable(&AtomicBool::new(true)).is_err());
+    }
 }

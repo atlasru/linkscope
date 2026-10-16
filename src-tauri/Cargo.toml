@@ -1,19 +1,26 @@
 [package]
-name = "linkscope"
-version = "0.1.0"
+name = "linkscope-desktop"
+version = "2.0.0"
 edition = "2021"
 license = "MIT"
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-linkscope-core = { path = "../crates/core" }
 tauri = { version = "2", features = [] }
+linkscope-engine = { path = "../crates/engine" }
+linkscope-transforms = { path = "../crates/transforms" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["sync"] }
-tokio-util = "0.7"
 anyhow = "1"
-zeroize = "1"
+tokio = { version = "1", features = ["sync", "rt-multi-thread", "time", "macros"] }
+tokio-util = "0.7"
+tempfile = "3"
+fs2 = "0.4"
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_UI_Controls_Dialogs", "Win32_Foundation"] }
